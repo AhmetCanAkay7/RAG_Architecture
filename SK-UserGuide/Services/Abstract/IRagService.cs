@@ -2,7 +2,6 @@
 
 public interface IRagService
 {
-
-    Task InitAsync(); // loads datas to the memory.
     Task<string> AskAsync(string question); // ask a question.
+    Task AddDocumentAsync(string text, string id);
 }

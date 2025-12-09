@@ -11,6 +11,8 @@ public class RagService : IRagService
     private readonly ISemanticTextMemory _memory;
     private readonly Kernel _kernel;
     private const string CollectionName = "GuideCollection";
+    private const int ChunkSize = 1000; // Her chunk 1000 karakter
+    private const int Overlap = 200; // Chunk'lar arasında 200 karakter overlap
 
     public RagService(ISemanticTextMemory memory, Kernel kernel)
     {
@@ -21,7 +23,7 @@ public class RagService : IRagService
     public async Task<string> AskAsync(string question)
     {
         // question'ı embeddinge çevirdi ve gitti contexte aradı. en alakalı vektörleri getirdi.
-        var results = _memory.SearchAsync(CollectionName,question,limit:2,minRelevanceScore:0.5);
+        var results = _memory.SearchAsync(CollectionName,question,limit:3,minRelevanceScore:0.5);
         StringBuilder context = new StringBuilder();
 
         await foreach (var item in results)
@@ -46,20 +48,31 @@ public class RagService : IRagService
         return result.GetValue<string>();
     }
 
-    // 1. Veri Yükleme (Uygulama açılınca çalışacak)
-    public async Task InitAsync()
+    public async Task AddDocumentAsync(string text, string baseId)
     {
-        // Şimdilik manuel veri. İleride buraya PDF okuma kodunu koyacaksın.
-        var docs = new Dictionary<string, string> {
-                { "1", "Use OneDrive folder for internal file sharing." },
-                { "2", "The VPN password must be changed every 3 months. You can change it from the IT portal." },
-                { "3", "The dining hall is open from 12:00 PM to 1:30 PM. The menu is published online." }
-            };
-
-        // Volatile Memory (RAM) olduğu için her açılışta tekrar yüklüyoruz
-        foreach (var doc in docs)
+        var chunks = ChunkText(text, ChunkSize, Overlap);
+        for (int i = 0; i < chunks.Count; i++)
         {
-            await _memory.SaveInformationAsync(CollectionName, doc.Value, doc.Key);
+            string chunkId = $"{baseId}_chunk_{i}";
+            await _memory.SaveInformationAsync(CollectionName, chunks[i], chunkId);
         }
+    }
+
+    private List<string> ChunkText(string text, int chunkSize, int overlap)
+    {
+        var chunks = new List<string>();
+        int start = 0;
+
+        while (start < text.Length)
+        {
+            int end = Math.Min(start + chunkSize, text.Length);
+            string chunk = text.Substring(start, end - start);
+            chunks.Add(chunk);
+
+            start += chunkSize - overlap;
+            if (start >= text.Length) break;
+        }
+
+        return chunks;
     }
 }

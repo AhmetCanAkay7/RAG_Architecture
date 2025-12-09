@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="Encamina.Enmarcha.SemanticKernel.Connectors.Memory" Version="8.3.0" />
     <PackageReference Include="Encamina.Enmarcha.SemanticKernel.Plugins.Memory" Version="8.3.0" />
+    <PackageReference Include="itext7" Version="9.4.0" />
     <PackageReference Include="Microsoft.SemanticKernel" Version="1.68.0" />
     <PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.68.0" />
     <PackageReference Include="Microsoft.SemanticKernel.Connectors.OpenAI" Version="1.68.0" />

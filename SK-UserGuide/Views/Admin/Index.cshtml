@@ -1,0 +1,160 @@
+@{
+    ViewData["Title"] = "Admin Panel";
+}
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-upload me-2"></i>Doküman Yükleme - Admin Panel
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted mb-4">
+                        PDF veya TXT format?nda dosyalar?n?z? yükleyin. Sistem otomatik olarak metni ç?kar?r, 
+                        embedding'e çevirir ve arama için haz?rlar.
+                    </p>
+
+                    <form asp-action="Upload" method="post" enctype="multipart/form-data" class="drop-zone" id="uploadForm">
+                        <div class="text-center mb-4">
+                            <i class="bi bi-cloud-upload display-4 text-primary mb-3"></i>
+                            <h5>Dosyalar?n?z? Buraya Sürükleyin</h5>
+                            <p class="text-muted">veya</p>
+                            <label for="fileInput" class="btn btn-primary btn-lg">
+                                <i class="bi bi-folder-open me-2"></i>Dosya Seçin
+                            </label>
+                            <input type="file" id="fileInput" name="file" accept=".txt,.pdf" class="d-none" required>
+                        </div>
+
+                        <div class="selected-file mb-3" id="selectedFile" style="display: none;">
+                            <div class="alert alert-info">
+                                <i class="bi bi-file-earmark me-2"></i>
+                                <span id="fileName"></span>
+                                <button type="button" class="btn-close float-end" onclick="clearFile()"></button>
+                            </div>
+                        </div>
+
+                        <div class="text-center">
+                            <button type="submit" class="btn btn-success btn-lg" id="uploadBtn">
+                                <i class="bi bi-upload me-2"></i>Yükle ve ??le
+                            </button>
+                        </div>
+                    </form>
+
+                    @if (ViewBag.Message != null)
+                    {
+                        <div class="alert alert-success mt-4" id="successAlert">
+                            <i class="bi bi-check-circle me-2"></i>@ViewBag.Message
+                        </div>
+                    }
+
+                    <div class="mt-4">
+                        <h6 class="text-muted">Desteklenen Formatlar:</h6>
+                        <div class="row text-center">
+                            <div class="col-6">
+                                <i class="bi bi-file-earmark-pdf text-danger display-6"></i>
+                                <p class="mt-2">PDF Dosyalar?</p>
+                            </div>
+                            <div class="col-6">
+                                <i class="bi bi-file-earmark-text text-primary display-6"></i>
+                                <p class="mt-2">TXT Dosyalar?</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const selectedFile = document.getElementById('selectedFile');
+        const fileName = document.getElementById('fileName');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const dropZone = document.querySelector('.drop-zone');
+
+        // Dosya seçildi?inde
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                showSelectedFile(file);
+            }
+        });
+
+        // Sürükle-b?rak
+        dropZone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                if (file.type === 'text/plain' || file.type === 'application/pdf') {
+                    fileInput.files = files;
+                    showSelectedFile(file);
+                } else {
+                    alert('Sadece .txt ve .pdf dosyalar? desteklenir.');
+                }
+            }
+        });
+
+        function showSelectedFile(file) {
+            fileName.textContent = file.name;
+            selectedFile.style.display = 'block';
+            uploadBtn.disabled = false;
+        }
+
+        function clearFile() {
+            fileInput.value = '';
+            selectedFile.style.display = 'none';
+            uploadBtn.disabled = true;
+        }
+
+        // Form submit s?ras?nda loading göster
+        document.getElementById('uploadForm').addEventListener('submit', function() {
+            uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Yükleniyor...';
+            uploadBtn.disabled = true;
+        });
+
+        // Sayfa yüklendi?inde
+        document.addEventListener('DOMContentLoaded', function() {
+            if (fileInput.files.length > 0) {
+                showSelectedFile(fileInput.files[0]);
+            }
+        });
+    </script>
+}
+
+<style>
+    .drop-zone {
+        border: 2px dashed #dee2e6;
+        border-radius: 10px;
+        padding: 40px 20px;
+        transition: all 0.3s ease;
+        background-color: #f8f9fa;
+    }
+
+    .drop-zone.drag-over {
+        border-color: #0d6efd;
+        background-color: #e7f3ff;
+    }
+
+    .drop-zone:hover {
+        border-color: #0d6efd;
+        background-color: #f0f8ff;
+    }
+</style>

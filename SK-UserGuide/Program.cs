@@ -46,13 +46,6 @@ builder.Services.AddScoped<IRagService, RagService>();
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    var ragService = scope.ServiceProvider.GetRequiredService<IRagService>();
-    // Wait koyuyoruz ki veri yüklenmeden site açılmasın
-    ragService.InitAsync().Wait();
-}
-
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
