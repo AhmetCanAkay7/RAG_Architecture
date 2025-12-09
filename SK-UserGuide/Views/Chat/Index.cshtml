@@ -1,0 +1,439 @@
+@{
+    ViewData["Title"] = "AI Chatbot";
+}
+
+<style>
+    /* Ana Container */
+    .chat-container {
+        max-width: 900px;
+        margin: 0 auto;
+        height: calc(100vh - 200px);
+        min-height: 500px;
+        display: flex;
+        flex-direction: column;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+    }
+
+    /* Header */
+    .chat-header {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        padding: 20px 25px;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .chat-header .avatar {
+        width: 50px;
+        height: 50px;
+        background: linear-gradient(135deg, #00f260, #0575e6);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    .chat-header .info h4 {
+        color: white;
+        margin: 0;
+        font-weight: 600;
+    }
+
+    .chat-header .info span {
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 13px;
+    }
+
+    .status-dot {
+        width: 10px;
+        height: 10px;
+        background: #00ff88;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 5px;
+        animation: pulse 2s infinite;
+    }
+
+    @@keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    /* Mesaj Alan? */
+    .chat-messages {
+        flex: 1;
+        padding: 25px;
+        overflow-y: auto;
+        background: #f8f9fa;
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .message {
+        max-width: 75%;
+        padding: 15px 20px;
+        border-radius: 20px;
+        position: relative;
+        animation: fadeInUp 0.3s ease;
+    }
+
+    @@keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .message.user {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        align-self: flex-end;
+        border-bottom-right-radius: 5px;
+    }
+
+    .message.bot {
+        background: white;
+        color: #333;
+        align-self: flex-start;
+        border-bottom-left-radius: 5px;
+        box-shadow: 0 3px 15px rgba(0, 0, 0, 0.1);
+    }
+
+    .message .time {
+        font-size: 11px;
+        opacity: 0.7;
+        margin-top: 8px;
+        display: block;
+    }
+
+    .message.user .time {
+        text-align: right;
+    }
+
+    /* Typing Indicator */
+    .typing-indicator {
+        display: flex;
+        gap: 5px;
+        padding: 15px 20px;
+        background: white;
+        border-radius: 20px;
+        width: fit-content;
+        box-shadow: 0 3px 15px rgba(0, 0, 0, 0.1);
+    }
+
+    .typing-indicator span {
+        width: 10px;
+        height: 10px;
+        background: #667eea;
+        border-radius: 50%;
+        animation: typing 1.4s infinite ease-in-out;
+    }
+
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+    @@keyframes typing {
+        0%, 60%, 100% { transform: translateY(0); }
+        30% { transform: translateY(-10px); }
+    }
+
+    /* Input Alan? */
+    .chat-input {
+        padding: 20px 25px;
+        background: white;
+        border-top: 1px solid #eee;
+        display: flex;
+        gap: 15px;
+        align-items: center;
+    }
+
+    .chat-input input {
+        flex: 1;
+        padding: 15px 20px;
+        border: 2px solid #e9ecef;
+        border-radius: 30px;
+        font-size: 15px;
+        transition: all 0.3s ease;
+        outline: none;
+    }
+
+    .chat-input input:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+    }
+
+    .chat-input input::placeholder {
+        color: #adb5bd;
+    }
+
+    .btn-send {
+        width: 55px;
+        height: 55px;
+        border: none;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 20px;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-send:hover {
+        transform: scale(1.1);
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+    }
+
+    .btn-send:active {
+        transform: scale(0.95);
+    }
+
+    .btn-send:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    /* Scrollbar */
+    .chat-messages::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .chat-messages::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb {
+        background: #ccc;
+        border-radius: 3px;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb:hover {
+        background: #aaa;
+    }
+
+    /* Welcome Message */
+    .welcome-card {
+        background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+        border: 1px dashed #667eea;
+        border-radius: 15px;
+        padding: 25px;
+        text-align: center;
+        margin-bottom: 10px;
+    }
+
+    .welcome-card h5 {
+        color: #667eea;
+        margin-bottom: 10px;
+    }
+
+    .welcome-card p {
+        color: #666;
+        margin: 0;
+        font-size: 14px;
+    }
+
+    /* Quick Actions */
+    .quick-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+        margin-top: 15px;
+    }
+
+    .quick-btn {
+        padding: 8px 16px;
+        background: white;
+        border: 1px solid #667eea;
+        color: #667eea;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 13px;
+        transition: all 0.3s ease;
+    }
+
+    .quick-btn:hover {
+        background: #667eea;
+        color: white;
+    }
+
+    /* Error Message */
+    .message.error {
+        background: #fff5f5;
+        border: 1px solid #fed7d7;
+        color: #c53030;
+    }
+</style>
+
+<div class="chat-container">
+    <!-- Header -->
+    <div class="chat-header">
+        <div class="avatar">??</div>
+        <div class="info">
+            <h4>SK UserGuide Asistan</h4>
+            <span><span class="status-dot"></span>Çevrimiçi - Yard?ma haz?r</span>
+        </div>
+    </div>
+
+    <!-- Messages -->
+    <div class="chat-messages" id="chatMessages">
+        <div class="welcome-card">
+            <h5>?? Ho? Geldiniz!</h5>
+            <p>?irket içi rehber asistan?n?z?m. Dosya payla??m?, VPN, yemekhane ve daha fazlas? hakk?nda sorular?n?z? yan?tlayabilirim.</p>
+            <div class="quick-actions">
+                <button class="quick-btn" onclick="askQuickQuestion('VPN parolas? nas?l de?i?tirilir?')">?? VPN Parola</button>
+                <button class="quick-btn" onclick="askQuickQuestion('Dosya payla??m? nas?l yap?l?r?')">?? Dosya Payla??m?</button>
+                <button class="quick-btn" onclick="askQuickQuestion('Yemekhane saatleri nedir?')">??? Yemekhane</button>
+            </div>
+        </div>
+        
+        <div class="message bot">
+            Merhaba! Size nas?l yard?mc? olabilirim? ??
+            <span class="time">?imdi</span>
+        </div>
+    </div>
+
+    <!-- Input -->
+    <div class="chat-input">
+        <input type="text" 
+               id="questionInput" 
+               placeholder="Sorunuzu buraya yaz?n..." 
+               autocomplete="off"
+               onkeypress="handleKeyPress(event)">
+        <button class="btn-send" id="sendBtn" onclick="sendQuestion()">
+            <span>?</span>
+        </button>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        const chatMessages = document.getElementById('chatMessages');
+        const questionInput = document.getElementById('questionInput');
+        const sendBtn = document.getElementById('sendBtn');
+
+        // Enter tu?u ile gönder
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendQuestion();
+            }
+        }
+
+        // H?zl? soru sor
+        function askQuickQuestion(question) {
+            questionInput.value = question;
+            sendQuestion();
+        }
+
+        // Saat formatla
+        function formatTime() {
+            return new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // Mesaj ekle
+        function addMessage(text, isUser, isError = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : (isError ? 'bot error' : 'bot')}`;
+            messageDiv.innerHTML = `
+                ${text}
+                <span class="time">${formatTime()}</span>
+            `;
+            chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+        }
+
+        // Typing indicator ekle
+        function showTypingIndicator() {
+            const typingDiv = document.createElement('div');
+            typingDiv.id = 'typingIndicator';
+            typingDiv.className = 'typing-indicator';
+            typingDiv.innerHTML = '<span></span><span></span><span></span>';
+            chatMessages.appendChild(typingDiv);
+            scrollToBottom();
+        }
+
+        // Typing indicator kald?r
+        function hideTypingIndicator() {
+            const typing = document.getElementById('typingIndicator');
+            if (typing) typing.remove();
+        }
+
+        // En alta scroll
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Soru gönder
+        async function sendQuestion() {
+            const question = questionInput.value.trim();
+            
+            if (!question) {
+                questionInput.focus();
+                return;
+            }
+
+            // UI'? devre d??? b?rak
+            questionInput.disabled = true;
+            sendBtn.disabled = true;
+
+            // Kullan?c? mesaj?n? ekle
+            addMessage(question, true);
+            questionInput.value = '';
+
+            // Typing göster
+            showTypingIndicator();
+
+            try {
+                // ChatController'a istek at
+                const response = await fetch('@Url.Action("Ask", "Chat")', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `question=${encodeURIComponent(question)}`
+                });
+
+                const result = await response.json();
+                
+                hideTypingIndicator();
+
+                if (result.success) {
+                    addMessage(result.answer, false);
+                } else {
+                    addMessage(`?? ${result.answer}`, false, true);
+                }
+            } catch (error) {
+                hideTypingIndicator();
+                addMessage('? Sunucuya ba?lan?rken bir hata olu?tu. Lütfen tekrar deneyin.', false, true);
+                console.error('Error:', error);
+            } finally {
+                // UI'? tekrar aktif et
+                questionInput.disabled = false;
+                sendBtn.disabled = false;
+                questionInput.focus();
+            }
+        }
+
+        // Sayfa yüklendi?inde input'a focus
+        document.addEventListener('DOMContentLoaded', () => {
+            questionInput.focus();
+        });
+    </script>
+}

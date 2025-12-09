@@ -1,7 +1,8 @@
 ﻿<!DOCTYPE html>
-<html lang="en">
+<html lang="tr">
 <head>
     <meta charset="utf-8" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - SK_UserGuide</title>
     <script type="importmap"></script>
@@ -22,6 +23,9 @@
                     <ul class="navbar-nav flex-grow-1">
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">Home</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-area="" asp-controller="Chat" asp-action="Index">💬 AI Chatbot</a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
@@ -46,5 +50,80 @@
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
+
+    <div id="ai-chat-widget" style="position:fixed; bottom:20px; right:20px; z-index:9999;">
+        <button onclick="toggleChat()" style="width:60px; height:60px; border-radius:50%; background:#007bff; color:white; border:none; font-size:30px; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.2);">💬</button>
+
+        <div id="chat-window" style="display:none; position:absolute; bottom:80px; right:0; width:350px; height:450px; background:white; border:1px solid #ddd; border-radius:10px; box-shadow:0 5px 15px rgba(0,0,0,0.2); flex-direction:column;">
+
+            <div style="background:#007bff; color:white; padding:15px; border-radius:10px 10px 0 0; font-weight:bold;">
+                AI Asistan
+                <span onclick="toggleChat()" style="float:right; cursor:pointer;">✖</span>
+            </div>
+
+            <div id="chat-messages" style="flex:1; padding:15px; overflow-y:auto; font-size:14px; background:#f9f9f9;">
+                <div class="bot-msg" style="background:#e9e9e9; padding:8px; border-radius:5px; margin-bottom:10px;">Merhaba! Size nasıl yardımcı olabilirim?</div>
+            </div>
+
+            <div style="padding:10px; border-top:1px solid #ddd; display:flex;">
+                <input type="text" id="user-input" placeholder="Sorunuzu yazın..." style="flex:1; padding:8px; border:1px solid #ccc; border-radius:4px;" onkeypress="if(event.key==='Enter') sendMessage()">
+                <button onclick="sendMessage()" style="margin-left:5px; padding:8px 15px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer;">➤</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleChat() {
+            var win = document.getElementById('chat-window');
+            win.style.display = (win.style.display === 'none') ? 'flex' : 'none';
+        }
+
+        async function sendMessage() {
+            var input = document.getElementById('user-input');
+            var messages = document.getElementById('chat-messages');
+            var text = input.value;
+
+            if (!text.trim()) return;
+
+            // 1. Kullanıcı mesajını ekle
+            messages.innerHTML += `<div style="text-align:right; margin-bottom:10px;"><span style="background:#dcf8c6; padding:8px; border-radius:5px; display:inline-block;">${text}</span></div>`;
+            input.value = '';
+            messages.scrollTop = messages.scrollHeight;
+
+            // 2. "Yazıyor..." mesajı ekle
+            var loadingId = "loading-" + Date.now();
+            messages.innerHTML += `<div id="${loadingId}" style="text-align:left; margin-bottom:10px;"><span style="background:#e9e9e9; padding:8px; border-radius:5px; display:inline-block; font-style:italic; color:#666;">Yazıyor...</span></div>`;
+            messages.scrollTop = messages.scrollHeight;
+
+            // 3. MVC Controller'a AJAX İsteği At
+            try {
+                // Form verisi olarak gönderiyoruz (MVC model binding için)
+                let formData = new FormData();
+                formData.append('message', text);
+
+                let response = await fetch('/Chatbot/Ask', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                let result = await response.json();
+
+                // "Yazıyor..." mesajını sil
+                document.getElementById(loadingId).remove();
+
+                if (result.success) {
+                    // Cevabı ekle
+                    messages.innerHTML += `<div style="text-align:left; margin-bottom:10px;"><span style="background:#e9e9e9; padding:8px; border-radius:5px; display:inline-block;">${result.answer}</span></div>`;
+                } else {
+                    messages.innerHTML += `<div style="color:red; font-size:12px; margin-bottom:10px;">Hata: ${result.answer}</div>`;
+                }
+            } catch (err) {
+                document.getElementById(loadingId).remove();
+                messages.innerHTML += `<div style="color:red; font-size:12px;">Sunucuya ulaşılamadı.</div>`;
+            }
+
+            messages.scrollTop = messages.scrollHeight;
+        }
+    </script>
 </body>
 </html>
