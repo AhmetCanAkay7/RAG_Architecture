@@ -1,4 +1,4 @@
-@{
+﻿@{
     ViewData["Title"] = "AI Chatbot";
 }
 
@@ -287,25 +287,25 @@
         <div class="avatar">??</div>
         <div class="info">
             <h4>SK UserGuide Asistan</h4>
-            <span><span class="status-dot"></span>�evrimi�i - Yard?ma haz?r</span>
+            <span><span class="status-dot"></span>Çevrimiçi - Yard?ma haz?r</span>
         </div>
     </div>
 
     <!-- Messages -->
     <div class="chat-messages" id="chatMessages">
         <div class="welcome-card">
-            <h5>?? Ho? Geldiniz!</h5>
-            <p>?irket i�i rehber asistan?n?z?m. Dosya payla??m?, VPN, yemekhane ve daha fazlas? hakk?nda sorular?n?z? yan?tlayabilirim.</p>
+            <h5> Hoş Geldiniz!</h5>
+            <p>Şirket içi rehber asistanınızım. Dosya paylaşımı, VPN, yemekhane ve daha fazlası hakkında sorularınızı yanıtlayabilirim.</p>
             <div class="quick-actions">
-                <button class="quick-btn" onclick="askQuickQuestion('VPN parolas? nas?l de?i?tirilir?')">?? VPN Parola</button>
-                <button class="quick-btn" onclick="askQuickQuestion('Dosya payla??m? nas?l yap?l?r?')">?? Dosya Payla??m?</button>
-                <button class="quick-btn" onclick="askQuickQuestion('Yemekhane saatleri nedir?')">??? Yemekhane</button>
+                <button class="quick-btn" onclick="askQuickQuestion('VPN parolası nasıl degistirilir?')"> VPN Parola</button>
+                <button class="quick-btn" onclick="askQuickQuestion('Dosya paylasımı nasıl yapılır?')"> Dosya Paylasımı</button>
+                <button class="quick-btn" onclick="askQuickQuestion('Yemekhane saatleri nedir?')"> Yemekhane</button>
             </div>
         </div>
         
         <div class="message bot">
-            Merhaba! Size nas?l yard?mc? olabilirim? ??
-            <span class="time">?imdi</span>
+            Merhaba! Size nasıl yardımcı olabilirim? 
+            <span class="time">şimdi</span>
         </div>
     </div>
 
@@ -313,7 +313,7 @@
     <div class="chat-input">
         <input type="text" 
                id="questionInput" 
-               placeholder="Sorunuzu buraya yaz?n..." 
+               placeholder="Sorunuzu buraya yazın..." 
                autocomplete="off"
                onkeypress="handleKeyPress(event)">
         <button class="btn-send" id="sendBtn" onclick="sendQuestion()">
@@ -328,7 +328,7 @@
         const questionInput = document.getElementById('questionInput');
         const sendBtn = document.getElementById('sendBtn');
 
-        // Enter tu?u ile g�nder
+        // Enter tu?u ile gönder
         function handleKeyPress(event) {
             if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
@@ -380,7 +380,7 @@
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
 
-        // Soru g�nder
+        // Soru gönder
         async function sendQuestion() {
             const question = questionInput.value.trim();
             
@@ -397,7 +397,7 @@
             addMessage(question, true);
             questionInput.value = '';
 
-            // Typing g�ster
+            // Typing göster
             showTypingIndicator();
 
             try {
@@ -421,7 +421,7 @@
                 }
             } catch (error) {
                 hideTypingIndicator();
-                addMessage('? Sunucuya ba?lan?rken bir hata olu?tu. L�tfen tekrar deneyin.', false, true);
+                addMessage('? Sunucuya ba?lan?rken bir hata olu?tu. Lütfen tekrar deneyin.', false, true);
                 console.error('Error:', error);
             } finally {
                 // UI'? tekrar aktif et
@@ -431,7 +431,7 @@
             }
         }
 
-        // Sayfa y�klendi?inde input'a focus
+        // Sayfa yüklendi?inde input'a focus
         document.addEventListener('DOMContentLoaded', () => {
             questionInput.focus();
         });
