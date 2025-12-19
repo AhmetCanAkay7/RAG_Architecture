@@ -23,11 +23,10 @@ Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<QdrantSettings>(builder.Configuration.GetSection("Qdrant"));
 
-// 2. Qdrant Client
+// 2. Qdrant Client (gRPC - port 6334)
 builder.Services.AddSingleton<QdrantClient>(sp =>
 {
     var settings = sp.GetRequiredService<IOptions<QdrantSettings>>().Value;
-    // Use gRPC port 6334 (not HTTP port 6333)
     return new QdrantClient("localhost", 6334, false);
 });
 
