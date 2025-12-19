@@ -32,10 +32,10 @@ builder.Services.AddSingleton<QdrantClient>(sp =>
     if (string.IsNullOrEmpty(hostConfig)) throw new InvalidOperationException("Qdrant Host not configured");
     Uri uri = new Uri(hostConfig);
     string hostname = uri.Host;
-    int port = int.Parse(config["Qdrant:Port"] ?? "6334"); // Use config port, default 6334 for Qdrant Cloud
+    int port = uri.Port;
     bool https = uri.Scheme == "https";
-    var apiKey = config["Qdrant:ApiKey"];
-    return new QdrantClient(new Uri($"https://{hostname}:{port}"));
+    // API key kaldırıldı - Docker yerel kurulumunda gereksiz
+    return new QdrantClient(hostname, port, https);
 });
 
 // 3. Embedding Service
