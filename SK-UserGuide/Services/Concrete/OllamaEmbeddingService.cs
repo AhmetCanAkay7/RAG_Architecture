@@ -1,46 +1,57 @@
-using Microsoft.SemanticKernel.Embeddings;
-using Microsoft.SemanticKernel;
-using System.Text.Json;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
+using SK_UserGuide.Configuration;
 
 namespace SK_UserGuide.Services.Concrete;
 
-public class OllamaEmbeddingService : ITextEmbeddingGenerationService
+/// <summary>
+/// Custom embedding service that uses Ollama's embedding API.
+/// </summary>
+public class OllamaEmbeddingService : IEmbeddingGenerator<string, Embedding<float>>
 {
     private readonly HttpClient _httpClient;
-    private readonly string _baseUrl;
-    private readonly string _model;
-    private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(5); // Bounded concurrency for batch performance
+    private readonly OllamaSettings _settings;
+    private readonly SemaphoreSlim _semaphore = new(5);
 
-    public OllamaEmbeddingService(HttpClient httpClient, IConfiguration configuration)
+    public OllamaEmbeddingService(HttpClient httpClient, IOptions<OllamaSettings> options)
     {
         _httpClient = httpClient;
-        _baseUrl = configuration["Ollama:BaseUrl"];
-        _model = configuration["Ollama:EmbeddingModel"];
+        _settings = options.Value;
     }
 
-    public IReadOnlyDictionary<string, object?> Attributes => new Dictionary<string, object?>();
+    public EmbeddingGeneratorMetadata Metadata => new("OllamaEmbedding", new Uri(_settings.BaseUrl));
 
-    public async Task<IList<ReadOnlyMemory<float>>> GenerateEmbeddingsAsync(IList<string> data, CancellationToken cancellationToken = default)
+    public async Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+        IEnumerable<string> values,
+        EmbeddingGenerationOptions? options = null,
+        CancellationToken cancellationToken = default)
     {
-        var tasks = data.Select(text => GenerateEmbeddingAsync(text, cancellationToken)).ToList();
-        return await Task.WhenAll(tasks);
+        var valuesList = values.ToList();
+        var tasks = valuesList.Select(text => GenerateSingleEmbeddingAsync(text, cancellationToken));
+        var embeddings = await Task.WhenAll(tasks);
+
+        return new GeneratedEmbeddings<Embedding<float>>(embeddings);
     }
 
-    public async Task<IList<ReadOnlyMemory<float>>> GenerateEmbeddingsAsync(IList<string> data, Kernel? kernel, CancellationToken cancellationToken = default)
-    {
-        return await GenerateEmbeddingsAsync(data, cancellationToken);
-    }
-
-    private async Task<ReadOnlyMemory<float>> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken)
+    private async Task<Embedding<float>> GenerateSingleEmbeddingAsync(string text, CancellationToken cancellationToken)
     {
         await _semaphore.WaitAsync(cancellationToken);
         try
         {
-            var request = new { model = _model, prompt = text };
-            var response = await _httpClient.PostAsJsonAsync($"{_baseUrl}/api/embeddings", request, cancellationToken);
+            var request = new { model = _settings.EmbeddingModel, prompt = text };
+            var response = await _httpClient.PostAsJsonAsync(
+                $"{_settings.BaseUrl}/api/embeddings",
+                request,
+                cancellationToken);
+
             response.EnsureSuccessStatusCode();
+
             var result = await response.Content.ReadFromJsonAsync<OllamaEmbeddingResponse>(cancellationToken);
-            return new ReadOnlyMemory<float>(result.Embedding);
+
+            if (result?.Embedding == null)
+                throw new InvalidOperationException("Ollama returned null embedding");
+
+            return new Embedding<float>(result.Embedding);
         }
         finally
         {
@@ -48,8 +59,20 @@ public class OllamaEmbeddingService : ITextEmbeddingGenerationService
         }
     }
 
+    public void Dispose()
+    {
+        _semaphore.Dispose();
+    }
+
+    public object? GetService(Type serviceType, object? serviceKey = null)
+    {
+        if (serviceType == typeof(OllamaEmbeddingService) || serviceType == typeof(IEmbeddingGenerator<string, Embedding<float>>))
+            return this;
+        return null;
+    }
+
     private class OllamaEmbeddingResponse
     {
-        public float[] Embedding { get; set; }
+        public float[]? Embedding { get; set; }
     }
 }

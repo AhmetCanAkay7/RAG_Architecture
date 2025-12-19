@@ -25,8 +25,8 @@ namespace SK_UserGuide.Controllers
         {
             if (file == null || file.Length == 0)
             {
-                ModelState.AddModelError("", "Lütfen bir dosya seçin.");
-                return View();
+                ModelState.AddModelError("", "Lutfen bir dosya secin.");
+                return View("Index");
             }
 
             string text = "";
@@ -54,16 +54,16 @@ namespace SK_UserGuide.Controllers
             }
             else
             {
-                ModelState.AddModelError("", "Sadece .txt ve .pdf dosyaları desteklenir.");
-                return View();
+                ModelState.AddModelError("", "Sadece .txt ve .pdf dosyalari desteklenir.");
+                return View("Index");
             }
 
             // Embedding ve store
             string id = Guid.NewGuid().ToString();
             await _ragService.AddDocumentAsync(text, id);
 
-            ViewBag.Message = "Dosya başarıyla yüklendi ve işlendi.";
-            return View();
+            ViewBag.Message = "Dosya basariyla yuklendi ve islendi.";
+            return View("Index");
         }
     }
 }

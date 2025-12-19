@@ -1,16 +1,15 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
-using Microsoft.SemanticKernel.Connectors.Qdrant;
-using Microsoft.SemanticKernel.Embeddings;
 using Qdrant.Client;
+using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.Concrete;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Add services to the container
 builder.Services.AddControllersWithViews()
     .AddJsonOptions(options =>
     {
@@ -20,60 +19,51 @@ builder.Services.AddControllersWithViews()
 // Encoding provider for Turkish characters
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-// 1. OLLAMA AYARLARI
-string ollamaUrl = "http://localhost:11434/v1";
-string chatModel = "phi3:3.8b";
+// 1. Configuration binding
+builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Ollama"));
+builder.Services.Configure<QdrantSettings>(builder.Configuration.GetSection("Qdrant"));
 
 // 2. Qdrant Client
 builder.Services.AddSingleton<QdrantClient>(sp =>
 {
-    var config = sp.GetRequiredService<IConfiguration>();
-    var hostConfig = config["Qdrant:Host"];
-    if (string.IsNullOrEmpty(hostConfig)) throw new InvalidOperationException("Qdrant Host not configured");
-    Uri uri = new Uri(hostConfig);
-    string hostname = uri.Host;
-    int port = uri.Port;
-    bool https = uri.Scheme == "https";
-    // API key kaldırıldı - Docker yerel kurulumunda gereksiz
-    return new QdrantClient(hostname, port, https);
+    var settings = sp.GetRequiredService<IOptions<QdrantSettings>>().Value;
+    // Use gRPC port 6334 (not HTTP port 6333)
+    return new QdrantClient("localhost", 6334, false);
 });
 
-// 3. Embedding Service
+// 3. Embedding Generator
 builder.Services.AddHttpClient<OllamaEmbeddingService>();
-builder.Services.AddSingleton<ITextEmbeddingGenerationService, OllamaEmbeddingService>();
+builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>, OllamaEmbeddingService>();
 
-// 4. Vector Store
-builder.Services.AddSingleton<QdrantVectorStore>(sp =>
-{
-    var client = sp.GetRequiredService<QdrantClient>();
-    return new QdrantVectorStore(client, false);
-});
-
-// 5. KERNEL BUILDER
+// 4. Semantic Kernel
+var ollamaSettings = builder.Configuration.GetSection("Ollama").Get<OllamaSettings>() ?? new OllamaSettings();
 var kernelBuilder = Kernel.CreateBuilder();
+
 #pragma warning disable SKEXP0010
-kernelBuilder.AddOpenAIChatCompletion(chatModel, new Uri(ollamaUrl), "ignore");
+kernelBuilder.AddOpenAIChatCompletion(
+    ollamaSettings.ChatModel,
+    new Uri($"{ollamaSettings.BaseUrl}/v1"),
+    "ignore");
 #pragma warning restore SKEXP0010
+
 builder.Services.AddSingleton(kernelBuilder.Build());
 
-// 6. RAG Services
+// 5. RAG Services
 builder.Services.AddScoped<RagIngestionService>();
 builder.Services.AddScoped<RagRetrievalService>();
 builder.Services.AddScoped<IRagService, RagService>();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Configure the HTTP request pipeline
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
 app.UseRouting();
-
 app.UseAuthorization();
 
 app.MapStaticAssets();
@@ -82,6 +72,5 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}")
     .WithStaticAssets();
-
 
 app.Run();
