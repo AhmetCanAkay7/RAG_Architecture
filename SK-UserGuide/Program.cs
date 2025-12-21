@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
-using Qdrant.Client;
 using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.Concrete;
@@ -23,12 +22,8 @@ Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<QdrantSettings>(builder.Configuration.GetSection("Qdrant"));
 
-// 2. Qdrant Client (gRPC - port 6334)
-builder.Services.AddSingleton<QdrantClient>(sp =>
-{
-    var settings = sp.GetRequiredService<IOptions<QdrantSettings>>().Value;
-    return new QdrantClient("localhost", 6334, false);
-});
+// 2. Qdrant REST Client (HTTP/1.1 - port 6333, bypasses HTTP/2 proxy issues)
+builder.Services.AddHttpClient<QdrantRestClient>();
 
 // 3. Embedding Generator
 builder.Services.AddHttpClient<OllamaEmbeddingService>();

@@ -1,23 +1,21 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
-using Qdrant.Client;
-using Qdrant.Client.Grpc;
 using SK_UserGuide.Configuration;
 using System.Text;
 
 namespace SK_UserGuide.Services.Concrete;
 
 /// <summary>
-/// Service for ingesting documents into Qdrant vector store.
+/// Service for ingesting documents into Qdrant vector store using REST API.
 /// </summary>
 public class RagIngestionService
 {
-    private readonly QdrantClient _qdrantClient;
+    private readonly QdrantRestClient _qdrantClient;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
     private readonly QdrantSettings _settings;
 
     public RagIngestionService(
-        QdrantClient qdrantClient,
+        QdrantRestClient qdrantClient,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
         IOptions<QdrantSettings> options)
     {
@@ -28,42 +26,64 @@ public class RagIngestionService
 
     public async Task IngestDocumentAsync(string docId, string text, Dictionary<string, object> metadata)
     {
-        // Ensure collection exists
-        var collections = await _qdrantClient.ListCollectionsAsync();
-        if (!collections.Any(c => c == _settings.Collection))
+        // Validate input
+        if (string.IsNullOrWhiteSpace(text))
         {
-            await _qdrantClient.CreateCollectionAsync(_settings.Collection,
-                new VectorParams { Size = 768, Distance = Distance.Cosine });
+            throw new ArgumentException("Document text cannot be empty", nameof(text));
         }
 
+        // Ensure collection exists
+        await _qdrantClient.CreateCollectionIfNotExistsAsync(_settings.Collection, 768);
+
         var chunks = ChunkText(text);
+
+        // Filter out empty chunks
+        chunks = chunks.Where(c => !string.IsNullOrWhiteSpace(c.Text)).ToList();
+
+        if (chunks.Count == 0)
+        {
+            throw new InvalidOperationException("No valid text chunks could be created from the document");
+        }
+
         var texts = chunks.Select(c => c.Text).ToList();
 
         // Generate embeddings
         var embeddings = await _embeddingGenerator.GenerateAsync(texts);
 
-        var points = new List<PointStruct>();
+        var points = new List<QdrantRestClient.PointStruct>();
         for (int i = 0; i < chunks.Count; i++)
         {
             var chunk = chunks[i];
             // Generate a unique numeric ID from docId and chunk index
             var idString = $"{docId}:{i}";
             var numericId = (ulong)Math.Abs(idString.GetHashCode()) + (ulong)i;
-            var point = new PointStruct
-            {
-                Id = new PointId { Num = numericId },
-                Vectors = embeddings[i].Vector.ToArray()
-            };
 
-            point.Payload.Add("doc_id", new Value { StringValue = docId });
-            point.Payload.Add("title", new Value { StringValue = metadata.GetValueOrDefault("title", "")?.ToString() ?? "" });
-            point.Payload.Add("section", new Value { StringValue = chunk.Section });
-            point.Payload.Add("path", new Value { StringValue = metadata.GetValueOrDefault("path", "")?.ToString() ?? "" });
-            point.Payload.Add("version", new Value { StringValue = metadata.GetValueOrDefault("version", "1")?.ToString() ?? "1" });
-            point.Payload.Add("updated_at", new Value { StringValue = DateTime.UtcNow.ToString("o") });
-            point.Payload.Add("chunk_index", new Value { IntegerValue = i });
-            point.Payload.Add("text", new Value { StringValue = chunk.Text });
-            point.Payload.Add("source_type", new Value { StringValue = metadata.GetValueOrDefault("source_type", "text")?.ToString() ?? "text" });
+            // Properly extract the vector from ReadOnlyMemory<float>
+            var vectorMemory = embeddings[i].Vector;
+            var vector = vectorMemory.ToArray();
+
+            if (vector.Length == 0)
+            {
+                throw new InvalidOperationException($"Embedding for chunk {i} is empty. Ollama may have failed to generate embeddings.");
+            }
+
+            var point = new QdrantRestClient.PointStruct
+            {
+                Id = numericId,
+                Vector = vector,
+                Payload = new Dictionary<string, object>
+                {
+                    ["doc_id"] = docId,
+                    ["title"] = metadata.GetValueOrDefault("title", "")?.ToString() ?? "",
+                    ["section"] = chunk.Section,
+                    ["path"] = metadata.GetValueOrDefault("path", "")?.ToString() ?? "",
+                    ["version"] = metadata.GetValueOrDefault("version", "1")?.ToString() ?? "1",
+                    ["updated_at"] = DateTime.UtcNow.ToString("o"),
+                    ["chunk_index"] = i,
+                    ["text"] = chunk.Text,
+                    ["source_type"] = metadata.GetValueOrDefault("source_type", "text")?.ToString() ?? "text"
+                }
+            };
 
             points.Add(point);
         }

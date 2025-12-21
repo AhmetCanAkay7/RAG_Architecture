@@ -27,10 +27,17 @@ public class ChatController : Controller
         }
         catch (Exception exception)
         {
-            return Json(new { 
-                success = false, 
-                answer = "Sistem şu an cevap veremiyor. Lütfen IT ile görüşün.",
-                reason = exception.Message 
+            // Show more details in development
+            var errorMessage = $"Hata: {exception.Message}";
+            if (exception.InnerException != null)
+            {
+                errorMessage += $" | Inner: {exception.InnerException.Message}";
+            }
+
+            return Json(new
+            {
+                success = false,
+                answer = errorMessage
             });
         }
     }
