@@ -1,29 +1,33 @@
 @{
     ViewData["Title"] = "Admin Panel";
+    var documents = ViewBag.Documents as List<SK_UserGuide.Services.Ingestion.DocumentInfo>
+        ?? new List<SK_UserGuide.Services.Ingestion.DocumentInfo>();
 }
 
 <div class="container py-5">
     <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="card shadow">
+        <div class="col-lg-10">
+
+            <!-- Upload Card -->
+            <div class="card shadow mb-4">
                 <div class="card-header bg-success text-white">
                     <h4 class="mb-0">
-                        <i class="bi bi-upload me-2"></i>Doküman Yükleme - Admin Panel
+                        <i class="bi bi-upload me-2"></i>Dokuman Yukleme
                     </h4>
                 </div>
                 <div class="card-body">
                     <p class="text-muted mb-4">
-                        PDF veya TXT format?nda dosyalar?n?z? yükleyin. Sistem otomatik olarak metni ç?kar?r, 
-                        embedding'e çevirir ve arama için haz?rlar.
+                        PDF veya TXT formatinda dosyalarinizi yukleyin. Sistem otomatik olarak metni cikarir, 
+                        embedding'e cevirir ve arama icin hazirlar.
                     </p>
 
                     <form asp-action="Upload" method="post" enctype="multipart/form-data" class="drop-zone" id="uploadForm">
                         <div class="text-center mb-4">
                             <i class="bi bi-cloud-upload display-4 text-primary mb-3"></i>
-                            <h5>Dosyalar?n?z? Buraya Sürükleyin</h5>
+                            <h5>Dosyalarinizi Buraya Surukleyin</h5>
                             <p class="text-muted">veya</p>
                             <label for="fileInput" class="btn btn-primary btn-lg">
-                                <i class="bi bi-folder-open me-2"></i>Dosya Seçin
+                                <i class="bi bi-folder-open me-2"></i>Dosya Secin
                             </label>
                             <input type="file" id="fileInput" name="file" accept=".txt,.pdf" class="d-none" required>
                         </div>
@@ -38,105 +42,240 @@
 
                         <div class="text-center">
                             <button type="submit" class="btn btn-success btn-lg" id="uploadBtn">
-                                <i class="bi bi-upload me-2"></i>Yükle ve ??le
+                                <i class="bi bi-upload me-2"></i>Yukle ve Isle
                             </button>
                         </div>
                     </form>
 
                     @if (ViewBag.Message != null)
                     {
-                        <div class="alert alert-success mt-4" id="successAlert">
-                            <i class="bi bi-check-circle me-2"></i>@ViewBag.Message
-                        </div>
-                    }
+                            <div class="alert @(ViewBag.Success == true ? "alert-success" : "alert-info") mt-4">
+                                <i class="bi bi-check-circle me-2"></i>@ViewBag.Message
+                            @if (ViewBag.ChunkCount != null)
+                            {
+                                        <br>
 
-                    <div class="mt-4">
-                        <h6 class="text-muted">Desteklenen Formatlar:</h6>
-                        <div class="row text-center">
-                            <div class="col-6">
-                                <i class="bi bi-file-earmark-pdf text-danger display-6"></i>
-                                <p class="mt-2">PDF Dosyalar?</p>
+                                <small class="text-muted">
+                                            Chunk: @ViewBag.ChunkCount | 
+                                            Versiyon: @ViewBag.Version | 
+                                            Sure: @ViewBag.ProcessingTime ms
+                                        </small>
+                            }
                             </div>
-                            <div class="col-6">
-                                <i class="bi bi-file-earmark-text text-primary display-6"></i>
-                                <p class="mt-2">TXT Dosyalar?</p>
-                            </div>
-                        </div>
-                    </div>
+                    }
                 </div>
+            </div>
+
+            <!-- Document List Card -->
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="bi bi-folder2-open me-2"></i>Yuklu Dokumanlar
+                    </h4>
+                    <button class="btn btn-light btn-sm" onclick="refreshDocuments()">
+                        <i class="bi bi-arrow-clockwise"></i> Yenile
+                    </button>
+                </div>
+                <div class="card-body">
+                    @if (documents.Count == 0)
+                    {
+                            <div class="text-center text-muted py-4">
+                                <i class="bi bi-inbox display-4"></i>
+                                <p class="mt-3">Henuz yuklenmis dokuman bulunmuyor.</p>
+                            </div>
+                    }
+                    else
+                    {
+                            <div class="table-responsive">
+                                <table class="table table-hover" id="documentsTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Dokuman Adi</th>
+                                            <th class="text-center">Versiyon</th>
+                                            <th class="text-center">Chunk Sayisi</th>
+                                            <th class="text-center">Islemler</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    @foreach (var doc in documents)
+                                    {
+                                                <tr data-doc-id="@doc.DocId">
+                                                    <td>
+                                                        <i class="bi bi-file-earmark-text text-primary me-2"></i>
+                                                @doc.DocName
+                                                        <br>
+                                                        <small class="text-muted">ID: @doc.DocId</small>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <span class="badge bg-info">v@doc.LatestVersion</span>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <span class="badge bg-secondary">@doc.ChunkCount chunks</span>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <button class="btn btn-danger btn-sm" 
+                                                                onclick="deleteDocument('@doc.DocId', '@doc.DocName')">
+                                                            <i class="bi bi-trash"></i> Sil
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                    }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="text-muted small mt-2">
+                                Toplam: @documents.Count dokuman, @documents.Sum(d => d.ChunkCount) chunk
+                            </div>
+                    }
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Dokumani Sil</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong id="deleteDocName"></strong> dokumanini silmek istediginize emin misiniz?</p>
+                <p class="text-muted small">Bu islem geri alinamaz ve tum versiyonlar silinecektir.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Iptal</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn" onclick="confirmDelete()">
+                    <i class="bi bi-trash me-1"></i>Sil
+                </button>
             </div>
         </div>
     </div>
 </div>
 
 @section Scripts {
-    <script>
-        const fileInput = document.getElementById('fileInput');
-        const selectedFile = document.getElementById('selectedFile');
-        const fileName = document.getElementById('fileName');
-        const uploadBtn = document.getElementById('uploadBtn');
-        const dropZone = document.querySelector('.drop-zone');
+        <script>
+            const fileInput = document.getElementById('fileInput');
+            const selectedFile = document.getElementById('selectedFile');
+            const fileName = document.getElementById('fileName');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const dropZone = document.querySelector('.drop-zone');
 
-        // Dosya seçildi?inde
-        fileInput.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                showSelectedFile(file);
-            }
-        });
+            let pendingDeleteDocId = null;
 
-        // Sürükle-b?rak
-        dropZone.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            dropZone.classList.add('drag-over');
-        });
-
-        dropZone.addEventListener('dragleave', function(e) {
-            e.preventDefault();
-            dropZone.classList.remove('drag-over');
-        });
-
-        dropZone.addEventListener('drop', function(e) {
-            e.preventDefault();
-            dropZone.classList.remove('drag-over');
-
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                const file = files[0];
-                if (file.type === 'text/plain' || file.type === 'application/pdf') {
-                    fileInput.files = files;
+            fileInput.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
                     showSelectedFile(file);
-                } else {
-                    alert('Sadece .txt ve .pdf dosyalar? desteklenir.');
+                }
+            });
+
+            dropZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                dropZone.classList.add('drag-over');
+            });
+
+            dropZone.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
+            });
+
+            dropZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
+
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const file = files[0];
+                    if (file.type === 'text/plain' || file.type === 'application/pdf') {
+                        fileInput.files = files;
+                        showSelectedFile(file);
+                    } else {
+                        alert('Sadece .txt ve .pdf dosyalari desteklenir.');
+                    }
+                }
+            });
+
+            function showSelectedFile(file) {
+                fileName.textContent = file.name;
+                selectedFile.style.display = 'block';
+                uploadBtn.disabled = false;
+            }
+
+            function clearFile() {
+                fileInput.value = '';
+                selectedFile.style.display = 'none';
+                uploadBtn.disabled = true;
+            }
+
+            document.getElementById('uploadForm').addEventListener('submit', function() {
+                uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Yukleniyor...';
+                uploadBtn.disabled = true;
+            });
+
+            function deleteDocument(docId, docName) {
+                pendingDeleteDocId = docId;
+                document.getElementById('deleteDocName').textContent = docName;
+                new bootstrap.Modal(document.getElementById('deleteModal')).show();
+            }
+
+            async function confirmDelete() {
+                if (!pendingDeleteDocId) return;
+
+                const btn = document.getElementById('confirmDeleteBtn');
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Siliniyor...';
+                btn.disabled = true;
+
+                try {
+                    const response = await fetch('@Url.Action("DeleteDocument", "Admin")', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `docId=${encodeURIComponent(pendingDeleteDocId)}`
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        const row = document.querySelector(`tr[data-doc-id="${pendingDeleteDocId}"]`);
+                        if (row) {
+                            row.remove();
+                        }
+                        bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+                        showToast('Dokuman basariyla silindi.', 'success');
+                    } else {
+                        showToast(result.message || 'Silme hatasi.', 'danger');
+                    }
+                } catch (error) {
+                    showToast('Bir hata olustu: ' + error.message, 'danger');
+                } finally {
+                    btn.innerHTML = '<i class="bi bi-trash me-1"></i>Sil';
+                    btn.disabled = false;
+                    pendingDeleteDocId = null;
                 }
             }
-        });
 
-        function showSelectedFile(file) {
-            fileName.textContent = file.name;
-            selectedFile.style.display = 'block';
-            uploadBtn.disabled = false;
-        }
-
-        function clearFile() {
-            fileInput.value = '';
-            selectedFile.style.display = 'none';
-            uploadBtn.disabled = true;
-        }
-
-        // Form submit s?ras?nda loading göster
-        document.getElementById('uploadForm').addEventListener('submit', function() {
-            uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Yükleniyor...';
-            uploadBtn.disabled = true;
-        });
-
-        // Sayfa yüklendi?inde
-        document.addEventListener('DOMContentLoaded', function() {
-            if (fileInput.files.length > 0) {
-                showSelectedFile(fileInput.files[0]);
+            function refreshDocuments() {
+                location.reload();
             }
-        });
-    </script>
+
+            function showToast(message, type) {
+                const toast = document.createElement('div');
+                toast.className = `alert alert-${type} position-fixed bottom-0 end-0 m-3`;
+                toast.style.zIndex = '9999';
+                toast.innerHTML = message;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+                if (fileInput.files.length > 0) {
+                    showSelectedFile(fileInput.files[0]);
+                }
+            });
+        </script>
 }
 
 <style>
@@ -156,5 +295,13 @@
     .drop-zone:hover {
         border-color: #0d6efd;
         background-color: #f0f8ff;
+    }
+
+    .table tbody tr {
+        transition: background-color 0.2s;
+    }
+
+    .table tbody tr:hover {
+        background-color: #f8f9fa;
     }
 </style>

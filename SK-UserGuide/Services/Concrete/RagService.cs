@@ -25,8 +25,8 @@ public class RagService : IRagService
     {
         var metadata = new Dictionary<string, object>
         {
-            ["title"] = "User Guide",
-            ["path"] = baseId,
+            ["title"] = "User Guide", // Dokümanın basligi
+            ["path"] = baseId, // dokumanın pathi
             ["source_type"] = "uploaded"
         };
         await _ingestionService.IngestDocumentAsync(baseId, text, metadata);

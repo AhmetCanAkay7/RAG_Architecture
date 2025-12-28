@@ -4,6 +4,8 @@ using Microsoft.SemanticKernel;
 using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.Concrete;
+using SK_UserGuide.Services.Ingestion;
+using SK_UserGuide.Services.Retrieval;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -42,10 +44,24 @@ kernelBuilder.AddOpenAIChatCompletion(
 
 builder.Services.AddSingleton(kernelBuilder.Build());
 
-// 5. RAG Services
+// 5. Hybrid Retrieval Service (NEW)
+builder.Services.AddHttpClient<HybridRetrievalService>();
+
+// 6. RAG Services
 builder.Services.AddScoped<RagIngestionService>();
 builder.Services.AddScoped<RagRetrievalService>();
 builder.Services.AddScoped<IRagService, RagService>();
+
+// 7. Ingestion Pipeline Services
+builder.Services.AddScoped<TextCleaner>();
+builder.Services.AddScoped<PdfTextExtractor>();
+builder.Services.AddScoped<TxtTextExtractor>();
+builder.Services.AddScoped<StructuralChunker>();
+builder.Services.AddScoped<DocumentMetadataBuilder>();
+builder.Services.AddHttpClient<VersionManager>();
+builder.Services.AddHttpClient<QdrantIngestionRepository>();
+builder.Services.AddScoped<DocumentIngestionOrchestrator>();
+
 
 var app = builder.Build();
 

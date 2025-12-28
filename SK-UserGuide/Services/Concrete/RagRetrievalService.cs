@@ -1,97 +1,141 @@
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
-using SK_UserGuide.Configuration;
-using System.Text;
+using SK_UserGuide.Services.LLM;
+using SK_UserGuide.Services.Retrieval;
 
 namespace SK_UserGuide.Services.Concrete;
 
 /// <summary>
-/// Service for retrieving documents and generating answers using RAG with REST API.
+/// Enhanced RAG retrieval service with multilingual support,
+/// context compression, and structured responses.
 /// </summary>
 public class RagRetrievalService
 {
-    private readonly QdrantRestClient _qdrantClient;
-    private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
+    private readonly HybridRetrievalService _hybridRetrieval;
     private readonly Kernel _kernel;
-    private readonly QdrantSettings _settings;
-    private const double MinScoreThreshold = 0.5;
+    private readonly ContextCompressor _compressor;
+    private readonly PromptBuilder _promptBuilder;
+    private readonly ResponseFormatter _responseFormatter;
 
     public RagRetrievalService(
-        QdrantRestClient qdrantClient,
-        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-        Kernel kernel,
-        IOptions<QdrantSettings> options)
+        HybridRetrievalService hybridRetrieval,
+        Kernel kernel)
     {
-        _qdrantClient = qdrantClient;
-        _embeddingGenerator = embeddingGenerator;
+        _hybridRetrieval = hybridRetrieval;
         _kernel = kernel;
-        _settings = options.Value;
+        _compressor = new ContextCompressor();
+        _promptBuilder = new PromptBuilder();
+        _responseFormatter = new ResponseFormatter();
     }
 
+    /// <summary>
+    /// Process a question with enhanced multilingual RAG pipeline.
+    /// </summary>
     public async Task<string> AskAsync(string question)
     {
-        // Generate embedding for the question
-        var questionEmbeddings = await _embeddingGenerator.GenerateAsync([question]);
-        var queryVector = questionEmbeddings.First().Vector.ToArray();
+        // 1. Detect question language
+        var questionLanguage = LanguageDetector.Detect(question);
 
-        // Search for similar documents
-        var searchResult = await _qdrantClient.SearchAsync(_settings.Collection, queryVector, limit: 5);
+        // 2. Detect question type for formatting
+        var questionType = QuestionTypeDetector.Detect(question);
 
-        var context = new StringBuilder();
-        var sources = new List<string>();
-        const int MaxContextLength = 8000; // Limit context to prevent LLM timeout
+        // 3. Hybrid retrieval
+        var retrievalResult = await _hybridRetrieval.RetrieveAsync(question);
 
-        foreach (var point in searchResult)
+        if (retrievalResult.ChunkCount == 0)
         {
-            if (point.Score < MinScoreThreshold) continue;
-
-            // Extract text from payload
-            var text = point.Payload?.TryGetValue("text", out var textElement) == true
-                ? textElement.GetString() ?? ""
-                : "";
-            var section = point.Payload?.TryGetValue("section", out var sectionElement) == true
-                ? sectionElement.GetString() ?? ""
-                : "";
-            var chunkIndex = point.Payload?.TryGetValue("chunk_index", out var chunkElement) == true
-                ? chunkElement.GetInt32()
-                : 0;
-
-            // Check if adding this chunk would exceed limit
-            if (context.Length + text.Length > MaxContextLength)
-            {
-                break; // Stop adding more context
-            }
-
-            context.AppendLine($"- {text}");
-            sources.Add($"Bolum: {section}, Chunk: {chunkIndex}");
+            var noResult = _responseFormatter.CreateNoResultsResponse(questionLanguage);
+            return noResult.ToDisplayString();
         }
 
-        if (context.Length == 0)
+        // 4. Context compression (extractive, no LLM)
+        var compressedContext = _compressor.Compress(
+            retrievalResult.SelectedChunks,
+            question,
+            questionLanguage);
+
+        // 5. Optional LLM-based compression (if needed)
+        if (_compressor.ShouldUseLLMCompression(question, compressedContext, questionType))
         {
-            return "Bu bilgi veritabaninda bulunamadi. Lutfen sorunuzu farkli sekilde sormayi deneyin veya yoneticinize basvurun.";
+            compressedContext = await LLMCompressAsync(question, compressedContext);
         }
 
-        var prompt = $@"Sen yardimci bir asistansin. Asagidaki [BAGLAM] bilgisini kullanarak kullanicinin sorusuna Turkce olarak cevap ver.
-Eger baglamda yeterli bilgi yoksa, bunu belirt.
+        // 6. Build prompt with enhanced system prompt
+        var prompt = _promptBuilder.Build(
+            question,
+            compressedContext,
+            questionLanguage,
+            questionType);
 
-[BAGLAM]:
-{context}
+        // 7. Call LLM
+        var rawAnswer = await CallLLMAsync(prompt);
 
-[SORU]: {question}
+        // 8. Format response
+        var response = _responseFormatter.Format(
+            rawAnswer,
+            compressedContext,
+            questionLanguage);
 
-[CEVAP]:";
+        return response.ToDisplayString();
+    }
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120)); // 2 minute timeout
+    /// <summary>
+    /// Optional LLM-based context compression.
+    /// Used only when extractive compression is not sufficient.
+    /// </summary>
+    private async Task<CompressedContext> LLMCompressAsync(
+        string question,
+        CompressedContext context)
+    {
         try
         {
-            var promptResult = await _kernel.InvokePromptAsync(prompt, cancellationToken: cts.Token);
-            var answer = promptResult.GetValue<string>() ?? "Cevap olusturulamadi.";
-            return $"{answer}\n\nKaynaklar:\n{string.Join("\n", sources)}";
+            var compressionPrompt = _promptBuilder.BuildCompressionPrompt(question, context);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var result = await _kernel.InvokePromptAsync(compressionPrompt, cancellationToken: cts.Token);
+            var compressedText = result.GetValue<string>() ?? "";
+
+            if (!string.IsNullOrWhiteSpace(compressedText))
+            {
+                // Create a single compressed context item
+                return new CompressedContext
+                {
+                    Items = new List<ContextItem>
+                    {
+                        new ContextItem
+                        {
+                            Index = 1,
+                            Text = compressedText,
+                            DocName = "Birleştirilmiş Kaynaklar",
+                            Language = LanguageDetector.Detect(compressedText),
+                            OriginalScore = context.AverageScore
+                        }
+                    }
+                };
+            }
+        }
+        catch
+        {
+            // Fall back to original context if compression fails
+        }
+
+        return context;
+    }
+
+    /// <summary>
+    /// Call LLM with the built prompt.
+    /// </summary>
+    private async Task<string> CallLLMAsync(string prompt)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+
+        try
+        {
+            var result = await _kernel.InvokePromptAsync(prompt, cancellationToken: cts.Token);
+            return result.GetValue<string>() ?? "Cevap oluşturulamadı.";
         }
         catch (OperationCanceledException)
         {
-            return "LLM yanit suresi doldu. Lutfen daha kisa bir soru sorun veya daha sonra tekrar deneyin.";
+            return "LLM yanıt süresi doldu. Lütfen daha kısa bir soru sorun veya daha sonra tekrar deneyin.";
         }
     }
 }
