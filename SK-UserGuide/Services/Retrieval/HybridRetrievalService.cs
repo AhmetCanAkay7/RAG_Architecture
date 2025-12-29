@@ -23,10 +23,9 @@ public class HybridRetrievalService
     // Configuration constants
     private const int DenseCandidateLimit = 25;
     private const int SparseCandidateLimit = 15;
-    private const int MinResultCount = 4;
-    private const int MaxResultCount = 8;
-    private const int MaxChunksPerSection = 2;
-    private const int TargetTokenBudget = 1500;
+    private const int MinResultCount = 3;
+    private const int MaxResultCount = 5;
+    private const int TargetTokenBudget = 800;
     private const int RrfK = 60;
     private const double ThresholdRatio = 0.6;
 
@@ -77,17 +76,14 @@ public class HybridRetrievalService
         // 5. Apply dynamic threshold with minimum guarantee
         var thresholded = ApplyDynamicThreshold(fusedResults);
 
-        // 6. Apply diversity filter (max chunks per section)
-        var diverse = ApplyDiversityFilter(thresholded);
-
-        // 7. Build context with token budget
-        var (context, citations, tokensUsed) = BuildContext(diverse);
+        // 6. Build context with token budget
+        var (context, citations, tokensUsed) = BuildContext(thresholded);
 
         return new RetrievalResult
         {
             Context = context,
             Citations = citations,
-            SelectedChunks = diverse,
+            SelectedChunks = thresholded,
             TotalCandidates = totalCandidates,
             TokensUsed = tokensUsed
         };
@@ -202,30 +198,7 @@ public class HybridRetrievalService
         return filtered.Take(MaxResultCount).ToList();
     }
 
-    /// <summary>
-    /// Apply diversity filter: max N chunks per doc+section combination.
-    /// </summary>
-    private List<ScoredChunk> ApplyDiversityFilter(List<ScoredChunk> results)
-    {
-        var sectionCounts = new Dictionary<string, int>();
-        var diverse = new List<ScoredChunk>();
 
-        foreach (var chunk in results)
-        {
-            // Group by doc_id + section_title
-            var key = $"{chunk.DocId ?? "unknown"}|{chunk.SectionTitle ?? ""}";
-
-            sectionCounts.TryGetValue(key, out var count);
-
-            if (count < MaxChunksPerSection)
-            {
-                diverse.Add(chunk);
-                sectionCounts[key] = count + 1;
-            }
-        }
-
-        return diverse;
-    }
 
     /// <summary>
     /// Build context string with token budget and citations.

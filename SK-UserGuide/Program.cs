@@ -31,15 +31,23 @@ builder.Services.AddHttpClient<QdrantRestClient>();
 builder.Services.AddHttpClient<OllamaEmbeddingService>();
 builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>, OllamaEmbeddingService>();
 
-// 4. Semantic Kernel
+// 4. Semantic Kernel with custom HttpClient (long timeout for Ollama)
 var ollamaSettings = builder.Configuration.GetSection("Ollama").Get<OllamaSettings>() ?? new OllamaSettings();
+
+// Register HttpClient for Semantic Kernel with extended timeout
+builder.Services.AddHttpClient("SemanticKernelClient", client =>
+{
+    client.Timeout = TimeSpan.FromMinutes(5); // 5 minute timeout for slow LLM responses
+});
+
+// Build kernel with Ollama
 var kernelBuilder = Kernel.CreateBuilder();
 
 #pragma warning disable SKEXP0010
 kernelBuilder.AddOpenAIChatCompletion(
-    ollamaSettings.ChatModel,
-    new Uri($"{ollamaSettings.BaseUrl}/v1"),
-    "ignore");
+    modelId: ollamaSettings.ChatModel,
+    endpoint: new Uri($"{ollamaSettings.BaseUrl}/v1"),
+    apiKey: "ignore");
 #pragma warning restore SKEXP0010
 
 builder.Services.AddSingleton(kernelBuilder.Build());

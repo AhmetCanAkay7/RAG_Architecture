@@ -22,18 +22,7 @@ namespace SK_UserGuide.Controllers
 
         public async Task<IActionResult> Index()
         {
-            // Load document list for display
-            try
-            {
-                var documents = await _qdrantRepo.GetAllDocumentsAsync();
-                ViewBag.Documents = documents;
-            }
-            catch
-            {
-                ViewBag.Documents = new List<DocumentInfo>();
-            }
-
-            return View();
+            return await LoadIndexViewAsync();
         }
 
         /// <summary>
@@ -44,8 +33,8 @@ namespace SK_UserGuide.Controllers
         {
             if (file == null || file.Length == 0)
             {
-                ModelState.AddModelError("", "Lütfen bir dosya seçin.");
-                return await Index();
+                TempData["Error"] = "Lütfen bir dosya seçin.";
+                return RedirectToAction("Index");
             }
 
             // Use new ingestion pipeline
@@ -53,18 +42,39 @@ namespace SK_UserGuide.Controllers
 
             if (result.Success)
             {
-                ViewBag.Message = result.Message;
-                ViewBag.Success = true;
-                ViewBag.ChunkCount = result.ChunkCount;
-                ViewBag.Version = result.Version;
-                ViewBag.ProcessingTime = result.ProcessingTimeMs;
+                // TempData ile mesajları taşı (PRG pattern)
+                // Not: TempData sadece string, int, bool serialize edebilir
+                TempData["Message"] = result.Message;
+                TempData["Success"] = "true";
+                TempData["ChunkCount"] = result.ChunkCount.ToString();
+                TempData["Version"] = result.Version.ToString();
+                TempData["ProcessingTime"] = result.ProcessingTimeMs.ToString();
             }
             else
             {
-                ModelState.AddModelError("", result.Message);
+                TempData["Error"] = result.Message;
             }
 
-            return await Index();
+            // Redirect to GET - bu sayede refresh yapıldığında POST tekrar gönderilmez
+            return RedirectToAction("Index");
+        }
+
+        /// <summary>
+        /// Helper method to load the Index view with documents.
+        /// </summary>
+        private async Task<IActionResult> LoadIndexViewAsync()
+        {
+            try
+            {
+                var documents = await _qdrantRepo.GetAllDocumentsAsync();
+                ViewBag.Documents = documents;
+            }
+            catch
+            {
+                ViewBag.Documents = new List<DocumentInfo>();
+            }
+
+            return View("Index");
         }
 
         /// <summary>
@@ -137,7 +147,7 @@ namespace SK_UserGuide.Controllers
             if (file == null || file.Length == 0)
             {
                 ModelState.AddModelError("", "Lutfen bir dosya secin.");
-                return await Index();
+                return await LoadIndexViewAsync();
             }
 
             string text = "";
@@ -164,7 +174,7 @@ namespace SK_UserGuide.Controllers
             else
             {
                 ModelState.AddModelError("", "Sadece .txt ve .pdf dosyalari desteklenir.");
-                return await Index();
+                return await LoadIndexViewAsync();
             }
 
             // Embedding ve store (legacy)
@@ -172,7 +182,7 @@ namespace SK_UserGuide.Controllers
             await _ragService.AddDocumentAsync(text, id);
 
             ViewBag.Message = "Dosya basariyla yuklendi ve islendi (legacy).";
-            return await Index();
+            return await LoadIndexViewAsync();
         }
     }
 }

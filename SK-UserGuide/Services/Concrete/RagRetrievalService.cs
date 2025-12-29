@@ -5,8 +5,7 @@ using SK_UserGuide.Services.Retrieval;
 namespace SK_UserGuide.Services.Concrete;
 
 /// <summary>
-/// Enhanced RAG retrieval service with multilingual support,
-/// context compression, and structured responses.
+/// RAG retrieval service with context compression and structured responses.
 /// </summary>
 public class RagRetrievalService
 {
@@ -28,17 +27,14 @@ public class RagRetrievalService
     }
 
     /// <summary>
-    /// Process a question with enhanced multilingual RAG pipeline.
+    /// Process a question with RAG pipeline.
     /// </summary>
     public async Task<string> AskAsync(string question)
     {
         // 1. Detect question language
         var questionLanguage = LanguageDetector.Detect(question);
 
-        // 2. Detect question type for formatting
-        var questionType = QuestionTypeDetector.Detect(question);
-
-        // 3. Hybrid retrieval
+        // 2. Hybrid retrieval
         var retrievalResult = await _hybridRetrieval.RetrieveAsync(question);
 
         if (retrievalResult.ChunkCount == 0)
@@ -47,29 +43,19 @@ public class RagRetrievalService
             return noResult.ToDisplayString();
         }
 
-        // 4. Context compression (extractive, no LLM)
+        // 3. Context compression (extractive, no LLM)
         var compressedContext = _compressor.Compress(
             retrievalResult.SelectedChunks,
             question,
             questionLanguage);
 
-        // 5. Optional LLM-based compression (if needed)
-        if (_compressor.ShouldUseLLMCompression(question, compressedContext, questionType))
-        {
-            compressedContext = await LLMCompressAsync(question, compressedContext);
-        }
+        // 4. Build prompt
+        var prompt = _promptBuilder.Build(question, compressedContext);
 
-        // 6. Build prompt with enhanced system prompt
-        var prompt = _promptBuilder.Build(
-            question,
-            compressedContext,
-            questionLanguage,
-            questionType);
-
-        // 7. Call LLM
+        // 5. Call LLM
         var rawAnswer = await CallLLMAsync(prompt);
 
-        // 8. Format response
+        // 6. Format response
         var response = _responseFormatter.Format(
             rawAnswer,
             compressedContext,
@@ -79,58 +65,26 @@ public class RagRetrievalService
     }
 
     /// <summary>
-    /// Optional LLM-based context compression.
-    /// Used only when extractive compression is not sufficient.
-    /// </summary>
-    private async Task<CompressedContext> LLMCompressAsync(
-        string question,
-        CompressedContext context)
-    {
-        try
-        {
-            var compressionPrompt = _promptBuilder.BuildCompressionPrompt(question, context);
-
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var result = await _kernel.InvokePromptAsync(compressionPrompt, cancellationToken: cts.Token);
-            var compressedText = result.GetValue<string>() ?? "";
-
-            if (!string.IsNullOrWhiteSpace(compressedText))
-            {
-                // Create a single compressed context item
-                return new CompressedContext
-                {
-                    Items = new List<ContextItem>
-                    {
-                        new ContextItem
-                        {
-                            Index = 1,
-                            Text = compressedText,
-                            DocName = "Birleştirilmiş Kaynaklar",
-                            Language = LanguageDetector.Detect(compressedText),
-                            OriginalScore = context.AverageScore
-                        }
-                    }
-                };
-            }
-        }
-        catch
-        {
-            // Fall back to original context if compression fails
-        }
-
-        return context;
-    }
-
-    /// <summary>
     /// Call LLM with the built prompt.
     /// </summary>
     private async Task<string> CallLLMAsync(string prompt)
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+        // 5 minute timeout - Ollama may need time to load model into memory
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
 
         try
         {
-            var result = await _kernel.InvokePromptAsync(prompt, cancellationToken: cts.Token);
+            // Limit response length for faster generation on CPU
+            var settings = new PromptExecutionSettings
+            {
+                ExtensionData = new Dictionary<string, object>
+                {
+                    ["max_tokens"] = 256,      // ~150-200 words max
+                    ["temperature"] = 0.3      // Lower = more focused answers
+                }
+            };
+
+            var result = await _kernel.InvokePromptAsync(prompt, new KernelArguments(settings), cancellationToken: cts.Token);
             return result.GetValue<string>() ?? "Cevap oluşturulamadı.";
         }
         catch (OperationCanceledException)

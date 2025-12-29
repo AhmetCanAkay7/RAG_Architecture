@@ -13,10 +13,11 @@ namespace SK_UserGuide.Services.Ingestion;
 /// </summary>
 public class StructuralChunker
 {
-    private const int TargetTokenMin = 400;
-    private const int TargetTokenMax = 700;
-    private const int OverlapTokens = 100;
-    private const int MinChunkTokens = 100;
+    // Daha küçük chunk'lar = daha iyi retrieval granularity
+    private const int TargetTokenMin = 150;   // Was 400 - daha küçük minimum
+    private const int TargetTokenMax = 350;   // Was 700 - daha küçük maksimum
+    private const int OverlapTokens = 50;     // Was 100 - daha az overlap
+    private const int MinChunkTokens = 30;    // Was 100 - çok kısa chunk'ları da kabul et
     private const double CharsPerToken = 3.5; // Türkçe için ortalama
 
     private readonly TextCleaner _textCleaner;

@@ -50,11 +50,21 @@ public class TextCleaner
         // Yaygın UTF-8 → Latin1 encoding hataları
         var replacements = new Dictionary<string, string>
         {
-            { "Ä±", "ı" }, { "Ã¼", "ü" }, { "Ã¶", "ö" },
-            { "Åž", "Ş" }, { "ÅŸ", "ş" }, { "Ä°", "İ" },
-            { "Ã‡", "Ç" }, { "Ã§", "ç" }, { "ÄŸ", "ğ" },
-            { "Äž", "Ğ" }, { "Ã¼", "ü" }, { "Ã–", "Ö" },
-            { "Ãœ", "Ü" }
+            // Küçük harfler
+            { "Ä±", "ı" },   // ı
+            { "ÄŸ", "ğ" },   // ğ
+            { "ÅŸ", "ş" },   // ş
+            { "Ã¼", "ü" },   // ü
+            { "Ã¶", "ö" },   // ö
+            { "Ã§", "ç" },   // ç
+            
+            // Büyük harfler
+            { "Ä°", "İ" },   // İ
+            { "Äž", "Ğ" },   // Ğ
+            { "Åž", "Ş" },   // Ş
+            { "Ãœ", "Ü" },   // Ü
+            { "Ã–", "Ö" },   // Ö
+            { "Ã‡", "Ç" }    // Ç
         };
 
         foreach (var (bad, good) in replacements)
@@ -72,16 +82,16 @@ public class TextCleaner
         {
             // Boş satırları koru (paragraf ayırıcı)
             if (string.IsNullOrWhiteSpace(line)) return true;
-            
+
             // Çok kısa satırlar (muhtemelen bozuk)
             if (line.Length < 3) return false;
-            
+
             // Sadece sayı ve sembol içeren satırlar
             if (Regex.IsMatch(line, @"^[\d\s\.\-\(\)\[\]\{\}:;,]+$")) return false;
-            
+
             // Yeterli harf içermeyen satırlar
             if (line.Count(c => char.IsLetter(c)) < 2) return false;
-            
+
             return true;
         }).ToList();
     }

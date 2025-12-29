@@ -65,28 +65,7 @@ public class ContextCompressor
         return result;
     }
 
-    /// <summary>
-    /// Check if LLM-based compression should be used.
-    /// </summary>
-    public bool ShouldUseLLMCompression(
-        string question,
-        CompressedContext context,
-        QuestionType questionType)
-    {
-        // Context still too long after extractive compression
-        if (context.EstimatedTokens > 1200)
-            return true;
 
-        // Complex question (multiple sub-questions)
-        if (question.Count(c => c == '?') > 1)
-            return true;
-
-        // Low quality context (low average score)
-        if (context.AverageScore < 0.3 && context.Items.Count > 3)
-            return true;
-
-        return false;
-    }
 
     private List<string> SplitToSentences(string text)
     {
