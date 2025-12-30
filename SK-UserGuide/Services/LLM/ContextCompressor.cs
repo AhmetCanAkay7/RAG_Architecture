@@ -40,7 +40,6 @@ public class ContextCompressor
             if (relevantSentences.Count > 0)
             {
                 var compressedText = string.Join(" ", relevantSentences);
-                var chunkLanguage = LanguageDetector.Detect(chunk.Text);
 
                 result.Items.Add(new ContextItem
                 {
@@ -49,7 +48,7 @@ public class ContextCompressor
                     DocName = chunk.DocName,
                     Page = chunk.Page,
                     Section = chunk.SectionTitle,
-                    Language = chunkLanguage,
+                    Language = "EN", // Default to English
                     OriginalScore = chunk.Score
                 });
             }
@@ -121,10 +120,10 @@ public class ContextCompressor
     {
         var stopwords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "bir", "bu", "şu", "o", "ne", "nasıl", "nedir", "neden",
-            "için", "ile", "ve", "veya", "ama", "da", "de", "mi", "mı",
             "the", "a", "an", "is", "are", "was", "were", "be", "been",
-            "to", "of", "and", "or", "in", "on", "at", "for", "with"
+            "to", "of", "and", "or", "in", "on", "at", "for", "with",
+            "what", "how", "why", "when", "where", "which", "who",
+            "this", "that", "it", "they", "we", "you", "i", "my", "your"
         };
 
         return Tokenize(text.ToLowerInvariant())

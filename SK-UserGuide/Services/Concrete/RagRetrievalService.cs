@@ -14,16 +14,19 @@ public class RagRetrievalService
     private readonly ContextCompressor _compressor;
     private readonly PromptBuilder _promptBuilder;
     private readonly ResponseFormatter _responseFormatter;
+    private readonly QueryTranslator _queryTranslator;
 
     public RagRetrievalService(
         HybridRetrievalService hybridRetrieval,
-        Kernel kernel)
+        Kernel kernel,
+        QueryTranslator? queryTranslator = null)
     {
         _hybridRetrieval = hybridRetrieval;
         _kernel = kernel;
         _compressor = new ContextCompressor();
         _promptBuilder = new PromptBuilder();
         _responseFormatter = new ResponseFormatter();
+        _queryTranslator = queryTranslator ?? new QueryTranslator(kernel, enabled: false);
     }
 
     /// <summary>
@@ -31,26 +34,27 @@ public class RagRetrievalService
     /// </summary>
     public async Task<string> AskAsync(string question)
     {
-        // 1. Detect question language
-        var questionLanguage = LanguageDetector.Detect(question);
+        // 1. Optionally translate query to English
+        var translationResult = await _queryTranslator.TranslateIfNeededAsync(question);
+        var processedQuestion = translationResult.Query;
 
         // 2. Hybrid retrieval
-        var retrievalResult = await _hybridRetrieval.RetrieveAsync(question);
+        var retrievalResult = await _hybridRetrieval.RetrieveAsync(processedQuestion);
 
         if (retrievalResult.ChunkCount == 0)
         {
-            var noResult = _responseFormatter.CreateNoResultsResponse(questionLanguage);
+            var noResult = _responseFormatter.CreateNoResultsResponse("EN");
             return noResult.ToDisplayString();
         }
 
         // 3. Context compression (extractive, no LLM)
         var compressedContext = _compressor.Compress(
             retrievalResult.SelectedChunks,
-            question,
-            questionLanguage);
+            processedQuestion,
+            "EN"); // Default to English
 
         // 4. Build prompt
-        var prompt = _promptBuilder.Build(question, compressedContext);
+        var prompt = _promptBuilder.Build(processedQuestion, compressedContext);
 
         // 5. Call LLM
         var rawAnswer = await CallLLMAsync(prompt);
@@ -59,7 +63,7 @@ public class RagRetrievalService
         var response = _responseFormatter.Format(
             rawAnswer,
             compressedContext,
-            questionLanguage);
+            "EN"); // Default to English
 
         return response.ToDisplayString();
     }
@@ -85,11 +89,12 @@ public class RagRetrievalService
             };
 
             var result = await _kernel.InvokePromptAsync(prompt, new KernelArguments(settings), cancellationToken: cts.Token);
-            return result.GetValue<string>() ?? "Cevap oluşturulamadı.";
+            return result.GetValue<string>() ?? "Unable to generate response.";
         }
         catch (OperationCanceledException)
         {
-            return "LLM yanıt süresi doldu. Lütfen daha kısa bir soru sorun veya daha sonra tekrar deneyin.";
+            return "LLM response timed out. Please try a shorter question or try again later.";
         }
     }
 }
+

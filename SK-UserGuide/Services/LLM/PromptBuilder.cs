@@ -7,8 +7,8 @@ namespace SK_UserGuide.Services.LLM;
 /// </summary>
 public class PromptBuilder
 {
-    // Ultra-simplified prompt for small models (mistral:7b, phi3)
-    private const string SystemPrompt = @"Sen bir kurumsal bilgi asistanısın. SADECE verilen bağlamı kullan. Kaynak belirt: [1], [2]. Kısa ve net yanıtla.";
+    // Simplified English prompt for optimal LLM performance
+    private const string SystemPrompt = @"You are an enterprise knowledge assistant. Use ONLY the provided context. Cite sources: [1], [2]. Respond concisely.";
 
     /// <summary>
     /// Build the complete prompt for LLM.
@@ -19,12 +19,12 @@ public class PromptBuilder
 
         return $@"{SystemPrompt}
 
-BAĞLAM:
+CONTEXT:
 {formattedContext}
 
-SORU: {question}
+QUESTION: {question}
 
-CEVAP:";
+ANSWER:";
     }
 
     /// <summary>

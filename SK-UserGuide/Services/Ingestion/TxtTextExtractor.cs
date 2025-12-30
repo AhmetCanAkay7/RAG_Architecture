@@ -11,7 +11,6 @@ public class TxtTextExtractor : ITextExtractor
 
     public ExtractedDocument Extract(Stream fileStream, string fileName)
     {
-        // Try UTF-8 first, fallback to Windows-1254 (Turkish) if BOM not present
         string text;
 
         // Reset stream position
@@ -33,17 +32,17 @@ public class TxtTextExtractor : ITextExtractor
         }
         else
         {
-            // Default to UTF-8 for Turkish content
+            // Default to UTF-8 for modern documents
             encoding = new UTF8Encoding(false);
         }
 
         using var reader = new StreamReader(fileStream, encoding, detectEncodingFromByteOrderMarks: true);
         text = reader.ReadToEnd();
 
-        // Normalize Unicode (important for Turkish characters)
+        // Normalize Unicode
         text = text.Normalize(NormalizationForm.FormC);
 
-        // TXT dosyaları için tek sayfa olarak kabul ediyoruz
+        // TXT files are treated as single page
         var pages = new List<PageContent>
         {
             new PageContent(1, text)

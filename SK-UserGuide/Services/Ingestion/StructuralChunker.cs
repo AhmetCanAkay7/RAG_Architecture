@@ -4,21 +4,22 @@ using System.Text.RegularExpressions;
 namespace SK_UserGuide.Services.Ingestion;
 
 /// <summary>
-/// Structural chunking algorithm optimized for Turkish user guides.
+/// Structural chunking algorithm optimized for user guides.
 /// Features:
 /// - Heading/paragraph/step list detection
-/// - Token-based budgeting (400-700 tokens target)
-/// - Overlap support (100 tokens)
-/// - Step list preservation (adım listeleri bölünmez)
+/// - Token-based budgeting (150-350 tokens target)
+/// - Overlap support (50 tokens)
+/// - Step list preservation (keeps steps together)
 /// </summary>
 public class StructuralChunker
 {
-    // Daha küçük chunk'lar = daha iyi retrieval granularity
-    private const int TargetTokenMin = 150;   // Was 400 - daha küçük minimum
-    private const int TargetTokenMax = 350;   // Was 700 - daha küçük maksimum
-    private const int OverlapTokens = 50;     // Was 100 - daha az overlap
-    private const int MinChunkTokens = 30;    // Was 100 - çok kısa chunk'ları da kabul et
-    private const double CharsPerToken = 3.5; // Türkçe için ortalama
+    // Smaller chunks = better retrieval granularity
+    private const int TargetTokenMin = 150;
+    private const int TargetTokenMax = 350;
+    private const int OverlapTokens = 50;
+    private const int MinChunkTokens = 30;
+    private const double CharsPerToken = 4.0; // English average
+
 
     private readonly TextCleaner _textCleaner;
 
@@ -182,27 +183,26 @@ public class StructuralChunker
         var trimmed = line.Trim();
         if (string.IsNullOrEmpty(trimmed)) return BlockType.Empty;
 
-        // Markdown başlıkları
+        // Markdown headings
         if (trimmed.StartsWith('#')) return BlockType.Heading;
 
-        // Numaralı başlıklar: "1. Giriş", "2.1 Alt Başlık"
-        if (Regex.IsMatch(trimmed, @"^(\d+\.)+\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]") && trimmed.Length < 80)
+        // Numbered headings: "1. Introduction", "2.1 Sub Heading"
+        if (Regex.IsMatch(trimmed, @"^(\d+\.)+\s+[A-Z][a-z]") && trimmed.Length < 80)
             return BlockType.Heading;
 
-        // Tamamen büyük harf başlıklar (PDF'lerde yaygın)
+        // All caps headings (common in PDFs)
         if (trimmed.Length > 3 && trimmed.Length < 60 &&
-            trimmed.All(c => char.IsUpper(c) || char.IsWhiteSpace(c) || char.IsDigit(c) || "ÇĞİÖŞÜ.-:".Contains(c)))
+            trimmed.All(c => char.IsUpper(c) || char.IsWhiteSpace(c) || char.IsDigit(c) || ".-:".Contains(c)))
             return BlockType.Heading;
 
-        // Adım/madde listesi pattern'leri
+        // Step/list patterns
         var stepPatterns = new[]
         {
-            @"^Adım\s*\d+[:\.\s]",           // "Adım 1:", "Adım 2."
+            @"^Step\s*\d+[:\.\s]",           // "Step 1:", "Step 2."
             @"^\d+[\.\)]\s+\S",               // "1. ...", "1) ..."
-            @"^[a-zçğıöşü][\.\)]\s+\S",       // "a. ...", "a) ..."
+            @"^[a-z][\.\)]\s+\S",             // "a. ...", "a) ..."
             @"^[•\-\*]\s+\S",                 // "• ...", "- ...", "* ..."
-            @"^➤\s+\S",                       // "➤ ..."
-            @"^Step\s*\d+[:\.\s]"             // "Step 1:" (İngilizce support)
+            @"^➤\s+\S"                        // "➤ ..."
         };
 
         if (stepPatterns.Any(p => Regex.IsMatch(trimmed, p, RegexOptions.IgnoreCase)))
@@ -316,7 +316,7 @@ public class StructuralChunker
     }
 
     /// <summary>
-    /// Estimate token count for text (Turkish: ~3.5 chars/token).
+    /// Estimate token count for text (English: ~4.0 chars/token).
     /// </summary>
     private int EstimateTokens(string text)
     {

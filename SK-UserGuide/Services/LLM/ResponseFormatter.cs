@@ -19,13 +19,13 @@ public class ResponseFormatter
         var citations = context.Items.Select(i => new Citation
         {
             Index = i.Index,
-            DocName = i.DocName ?? "Bilinmeyen",
+            DocName = i.DocName ?? "Unknown",
             Page = i.Page,
             Section = i.Section
         }).ToList();
 
         // Check for missing info indicators
-        var missingInfo = ExtractMissingInfoWarning(rawAnswer, responseLanguage);
+        var missingInfo = ExtractMissingInfoWarning(rawAnswer);
 
         // Split summary and details
         var (summary, details) = SplitSummaryAndDetails(rawAnswer);
@@ -40,11 +40,9 @@ public class ResponseFormatter
         };
     }
 
-    private string? ExtractMissingInfoWarning(string answer, string language)
+    private string? ExtractMissingInfoWarning(string answer)
     {
-        var missingIndicators = language == "TR"
-            ? new[] { "bulunmamaktadır", "mevcut değil", "bulunamadı", "bilgi yok", "kaynaklarda yok" }
-            : new[] { "not found", "not available", "no information", "cannot find", "not in the sources" };
+        var missingIndicators = new[] { "not found", "not available", "no information", "cannot find", "not in the sources" };
 
         if (missingIndicators.Any(i => answer.Contains(i, StringComparison.OrdinalIgnoreCase)))
         {
@@ -53,10 +51,7 @@ public class ResponseFormatter
             var missingSentence = sentences.FirstOrDefault(s =>
                 missingIndicators.Any(i => s.Contains(i, StringComparison.OrdinalIgnoreCase)));
 
-            return missingSentence?.Trim() ??
-                (language == "TR"
-                    ? "Bazı bilgiler kaynaklarda bulunamadı."
-                    : "Some information was not found in the sources.");
+            return missingSentence?.Trim() ?? "Some information was not found in the sources.";
         }
 
         return null;
@@ -125,15 +120,12 @@ public class ResponseFormatter
     {
         return new RagResponse
         {
-            Summary = language == "TR"
-                ? "Bu bilgi veritabanında bulunamadı."
-                : "This information was not found in the database.",
-            Details = language == "TR"
-                ? "Lütfen sorunuzu farklı şekilde sormayı deneyin veya yöneticinize başvurun."
-                : "Please try rephrasing your question or contact your administrator.",
+            Summary = "This information was not found in the database.",
+            Details = "Please try rephrasing your question or contact your administrator.",
             Citations = new List<Citation>(),
             MissingInfo = null,
             ResponseLanguage = language
         };
     }
 }
+

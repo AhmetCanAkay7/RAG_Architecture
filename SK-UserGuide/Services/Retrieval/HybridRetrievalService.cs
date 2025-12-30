@@ -28,6 +28,7 @@ public class HybridRetrievalService
     private const int TargetTokenBudget = 800;
     private const int RrfK = 60;
     private const double ThresholdRatio = 0.6;
+    private const double AbsoluteMinScore = 0.02;  // Absolute minimum RRF score threshold
 
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -178,7 +179,7 @@ public class HybridRetrievalService
     }
 
     /// <summary>
-    /// Apply dynamic threshold based on max score, with minimum guarantee.
+    /// Apply dynamic threshold based on max score, with absolute minimum filter.
     /// </summary>
     private List<ScoredChunk> ApplyDynamicThreshold(List<ScoredChunk> results)
     {
@@ -187,12 +188,19 @@ public class HybridRetrievalService
         var maxScore = results[0].Score;
         var threshold = maxScore * ThresholdRatio;
 
-        var filtered = results.Where(r => r.Score >= threshold).ToList();
+        // Apply both relative threshold AND absolute minimum score
+        var filtered = results
+            .Where(r => r.Score >= threshold && r.Score >= AbsoluteMinScore)
+            .ToList();
 
-        // Minimum guarantee
+        // Only apply minimum guarantee if filtered results also meet absolute threshold
         if (filtered.Count < MinResultCount)
         {
-            filtered = results.Take(MinResultCount).ToList();
+            // Take top results but still respect absolute minimum
+            filtered = results
+                .Where(r => r.Score >= AbsoluteMinScore)
+                .Take(MinResultCount)
+                .ToList();
         }
 
         return filtered.Take(MaxResultCount).ToList();
@@ -255,11 +263,11 @@ public class HybridRetrievalService
         if (!string.IsNullOrEmpty(chunk.DocName))
             parts.Add(chunk.DocName);
         if (chunk.Page.HasValue)
-            parts.Add($"Sayfa {chunk.Page}");
+            parts.Add($"Page {chunk.Page}");
         if (!string.IsNullOrEmpty(chunk.SectionTitle))
             parts.Add(chunk.SectionTitle);
 
-        var location = parts.Count > 0 ? string.Join(" > ", parts) : "Bilinmeyen Kaynak";
+        var location = parts.Count > 0 ? string.Join(" > ", parts) : "Unknown Source";
         return $"[{index}] {location}";
     }
 

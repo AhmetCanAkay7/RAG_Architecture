@@ -4,25 +4,26 @@ using System.Text.RegularExpressions;
 namespace SK_UserGuide.Services.Retrieval;
 
 /// <summary>
-/// Extracts keywords from Turkish text for sparse search.
+/// Extracts keywords from text for sparse search.
 /// Handles stopwords, special patterns (error codes, CamelCase), and normalization.
 /// </summary>
 public static class KeywordExtractor
 {
-    private static readonly HashSet<string> TurkishStopwords = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> EnglishStopwords = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Soru kelimeleri
-        "ne", "nasıl", "nedir", "neden", "hangi", "kaç", "kim", "nerede",
-        // Bağlaçlar
-        "ve", "veya", "ile", "için", "ama", "fakat", "ancak", "çünkü",
-        // Ekler/Edatlar
-        "bir", "bu", "şu", "o", "da", "de", "mi", "mı", "mu", "mü",
-        // Zamirler
-        "ben", "sen", "biz", "siz", "onlar", "kendi",
-        // Yardımcı fiiller
-        "var", "yok", "olur", "oldu", "olan", "olarak", "gibi",
-        // Genel
-        "ise", "eğer", "daha", "en", "çok", "az", "sonra", "önce"
+        // Question words
+        "what", "how", "why", "when", "where", "which", "who", "whom",
+        // Conjunctions
+        "and", "or", "but", "because", "although", "however", "therefore",
+        // Articles/Prepositions
+        "a", "an", "the", "in", "on", "at", "to", "for", "of", "with", "by",
+        // Pronouns
+        "i", "you", "he", "she", "it", "we", "they", "my", "your", "his", "her",
+        // Auxiliary verbs
+        "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+        "do", "does", "did", "will", "would", "could", "should", "can", "may",
+        // Common words
+        "this", "that", "these", "those", "if", "then", "more", "less", "very"
     };
 
     /// <summary>
@@ -35,14 +36,14 @@ public static class KeywordExtractor
 
         var keywords = new List<string>();
 
-        // 1. Özel pattern'leri önce yakala (hata kodları, CamelCase, vs.)
+        // 1. Extract special patterns first (error codes, CamelCase, etc.)
         var specialPatterns = ExtractSpecialPatterns(text);
         keywords.AddRange(specialPatterns);
 
-        // 2. Normal kelimeleri tokenize et
-        var words = Regex.Split(text.ToLower(new CultureInfo("tr-TR")), @"[\s\p{P}]+")
+        // 2. Tokenize normal words
+        var words = Regex.Split(text.ToLower(CultureInfo.InvariantCulture), @"[\s\p{P}]+")
             .Where(w => w.Length > 2)
-            .Where(w => !TurkishStopwords.Contains(w))
+            .Where(w => !EnglishStopwords.Contains(w))
             .Where(w => !keywords.Contains(w, StringComparer.OrdinalIgnoreCase))
             .ToList();
 
@@ -61,20 +62,20 @@ public static class KeywordExtractor
     {
         var patterns = new List<string>();
 
-        // Error codes: ERR-001, HATA_5001, E1234
-        var errorCodes = Regex.Matches(text, @"[A-ZÇĞİÖŞÜ]{2,}[-_]?\d+", RegexOptions.IgnoreCase);
+        // Error codes: ERR-001, ERROR_5001, E1234
+        var errorCodes = Regex.Matches(text, @"[A-Z]{2,}[-_]?\d+", RegexOptions.IgnoreCase);
         patterns.AddRange(errorCodes.Select(m => m.Value));
 
-        // CamelCase: LoginScreen, SiparisFormu
-        var camelCase = Regex.Matches(text, @"[A-ZÇĞİÖŞÜ][a-zçğıöşü]+[A-ZÇĞİÖŞÜ][a-zA-ZçğıöşüÇĞİÖŞÜ]*");
+        // CamelCase: LoginScreen, OrderForm
+        var camelCase = Regex.Matches(text, @"[A-Z][a-z]+[A-Z][a-zA-Z]*");
         patterns.AddRange(camelCase.Select(m => m.Value));
 
-        // Quoted strings: "Kaydet" butonu
+        // Quoted strings: "Save" button
         var quoted = Regex.Matches(text, @"""([^""]+)""");
         patterns.AddRange(quoted.Select(m => m.Groups[1].Value));
 
-        // Screen/menu names in Turkish: Ayarlar Ekranı, Kullanıcı Menüsü
-        var screenNames = Regex.Matches(text, @"[A-ZÇĞİÖŞÜ][a-zçğıöşü]+\s+(Ekranı|Menüsü|Sayfası|Paneli|Formu)",
+        // Screen/menu names: Settings Screen, User Menu
+        var screenNames = Regex.Matches(text, @"[A-Z][a-z]+\s+(Screen|Menu|Page|Panel|Form|Dialog|Window)",
             RegexOptions.IgnoreCase);
         patterns.AddRange(screenNames.Select(m => m.Value));
 
