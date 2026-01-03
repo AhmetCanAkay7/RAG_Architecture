@@ -52,25 +52,14 @@ kernelBuilder.AddOpenAIChatCompletion(
 
 builder.Services.AddSingleton(kernelBuilder.Build());
 
-// 5. Hybrid Retrieval Service (NEW)
-builder.Services.AddHttpClient<HybridRetrievalService>();
+// 5. Hybrid Retrieval Service
+builder.Services.AddHttpClient<IHybridRetrievalService, HybridRetrievalService>();
 
-// 6. Chat History Manager (in-memory, singleton)
-builder.Services.AddSingleton<SK_UserGuide.Services.Chat.ChatHistoryManager>();
+// 6. Response Cache (in-memory, singleton)
 builder.Services.AddSingleton<SK_UserGuide.Services.Chat.ResponseCache>();
 
-// 7. Session support for chat history
-builder.Services.AddDistributedMemoryCache();
-builder.Services.AddSession(options =>
-{
-    options.IdleTimeout = TimeSpan.FromMinutes(30);
-    options.Cookie.HttpOnly = true;
-    options.Cookie.IsEssential = true;
-});
-
 // 8. RAG Services
-builder.Services.AddScoped<RagIngestionService>();
-builder.Services.AddScoped<RagRetrievalService>();
+builder.Services.AddScoped<IRagRetrievalService, RagRetrievalService>();
 builder.Services.AddScoped<IRagService, RagService>();
 
 // 7. Ingestion Pipeline Services
@@ -79,9 +68,9 @@ builder.Services.AddScoped<PdfTextExtractor>();
 builder.Services.AddScoped<TxtTextExtractor>();
 builder.Services.AddScoped<StructuralChunker>();
 builder.Services.AddScoped<DocumentMetadataBuilder>();
-builder.Services.AddHttpClient<VersionManager>();
-builder.Services.AddHttpClient<QdrantIngestionRepository>();
-builder.Services.AddScoped<DocumentIngestionOrchestrator>();
+builder.Services.AddHttpClient<IVersionManager, VersionManager>();
+builder.Services.AddHttpClient<IQdrantIngestionRepository, QdrantIngestionRepository>();
+builder.Services.AddScoped<IDocumentIngestionOrchestrator, DocumentIngestionOrchestrator>();
 
 
 var app = builder.Build();
@@ -95,7 +84,6 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseRouting();
-app.UseSession();  // Enable session for chat history
 app.UseAuthorization();
 
 app.MapStaticAssets();

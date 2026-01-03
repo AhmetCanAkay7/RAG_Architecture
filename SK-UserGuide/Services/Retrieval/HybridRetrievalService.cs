@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using SK_UserGuide.Configuration;
+using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.Concrete;
 
 namespace SK_UserGuide.Services.Retrieval;
@@ -13,7 +14,7 @@ namespace SK_UserGuide.Services.Retrieval;
 /// Hybrid retrieval service combining dense (embedding) and sparse (keyword) search.
 /// Features: RRF fusion, dynamic threshold, diversity selection, token-budgeted context.
 /// </summary>
-public class HybridRetrievalService
+public class HybridRetrievalService : IHybridRetrievalService
 {
     private readonly QdrantRestClient _qdrantClient;
     private readonly HttpClient _httpClient;
@@ -24,7 +25,7 @@ public class HybridRetrievalService
     private const int DenseCandidateLimit = 25;
     private const int SparseCandidateLimit = 15;
     private const int MinResultCount = 3;
-    private const int MaxResultCount = 5;
+    private const int MaxResultCount = 7;
     private const int TargetTokenBudget = 800;
     private const int RrfK = 60;
     private const double ThresholdRatio = 0.6;

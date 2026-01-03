@@ -4,13 +4,14 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using SK_UserGuide.Configuration;
+using SK_UserGuide.Services.Abstract;
 
 namespace SK_UserGuide.Services.Ingestion;
 
 /// <summary>
 /// Repository for ingesting chunks into Qdrant with proper metadata.
 /// </summary>
-public class QdrantIngestionRepository : IDisposable
+public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly QdrantSettings _settings;

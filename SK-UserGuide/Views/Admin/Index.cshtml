@@ -12,23 +12,23 @@
             <div class="card shadow mb-4">
                 <div class="card-header bg-success text-white">
                     <h4 class="mb-0">
-                        <i class="bi bi-upload me-2"></i>Dokuman Yukleme
+                        <i class="bi bi-upload me-2"></i>Document Upload
                     </h4>
                 </div>
                 <div class="card-body">
                     <p class="text-muted mb-4">
-                        PDF veya TXT formatinda dosyalarinizi yukleyin. Sistem otomatik olarak metni cikarir,
-                        embedding'e cevirir ve arama icin hazirlar.
+                        Upload your files in PDF or TXT format. The system automatically extracts text,
+                        converts to embeddings, and prepares for search.
                     </p>
 
                     <form asp-action="Upload" method="post" enctype="multipart/form-data" class="drop-zone"
                         id="uploadForm">
                         <div class="text-center mb-4">
                             <i class="bi bi-cloud-upload display-4 text-primary mb-3"></i>
-                            <h5>Dosyalarinizi Buraya Surukleyin</h5>
-                            <p class="text-muted">veya</p>
+                            <h5>Drag and Drop Files Here</h5>
+                            <p class="text-muted">or</p>
                             <label for="fileInput" class="btn btn-primary btn-lg">
-                                <i class="bi bi-folder-open me-2"></i>Dosya Secin
+                                <i class="bi bi-folder-open me-2"></i>Select File
                             </label>
                             <input type="file" id="fileInput" name="file" accept=".txt,.pdf" class="d-none" required>
                         </div>
@@ -52,7 +52,7 @@
                     {
                         <div class="alert alert-danger mt-4">
                             <i class="bi bi-exclamation-triangle me-2"></i>
-                            <strong>Hata:</strong> @TempData["Error"]
+                            <strong>Error:</strong> @TempData["Error"]
                         </div>
                     }
 
@@ -65,9 +65,9 @@
                             {
                                 <br>
                                 <small class="text-muted">
-                                    Chunk: @TempData["ChunkCount"] |
-                                    Versiyon: @TempData["Version"] |
-                                    Sure: @TempData["ProcessingTime"] ms
+                                    Chunks: @TempData["ChunkCount"] |
+                                    Version: @TempData["Version"] |
+                                    Time: @TempData["ProcessingTime"] ms
                                 </small>
                             }
                         </div>
@@ -79,10 +79,10 @@
             <div class="card shadow">
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                     <h4 class="mb-0">
-                        <i class="bi bi-folder2-open me-2"></i>Yuklu Dokumanlar
+                        <i class="bi bi-folder2-open me-2"></i>Uploaded Documents
                     </h4>
                     <button class="btn btn-light btn-sm" onclick="refreshDocuments()">
-                        <i class="bi bi-arrow-clockwise"></i> Yenile
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
                     </button>
                 </div>
                 <div class="card-body">
@@ -90,7 +90,7 @@
                     {
                         <div class="text-center text-muted py-4">
                             <i class="bi bi-inbox display-4"></i>
-                            <p class="mt-3">Henuz yuklenmis dokuman bulunmuyor.</p>
+                            <p class="mt-3">No documents uploaded yet.</p>
                         </div>
                     }
                     else
@@ -99,10 +99,10 @@
                             <table class="table table-hover" id="documentsTable">
                                 <thead class="table-light">
                                     <tr>
-                                        <th>Dokuman Adi</th>
-                                        <th class="text-center">Versiyon</th>
-                                        <th class="text-center">Chunk Sayisi</th>
-                                        <th class="text-center">Islemler</th>
+                                        <th>Document Name</th>
+                                        <th class="text-center">Version</th>
+                                        <th class="text-center">Chunk Count</th>
+                                        <th class="text-center">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -124,7 +124,7 @@
                                             <td class="text-center">
                                                 <button class="btn btn-danger btn-sm"
                                                     onclick="deleteDocument('@doc.DocId', '@doc.DocName')">
-                                                    <i class="bi bi-trash"></i> Sil
+                                                    <i class="bi bi-trash"></i> Delete
                                                 </button>
                                             </td>
                                         </tr>
@@ -133,7 +133,7 @@
                             </table>
                         </div>
                         <div class="text-muted small mt-2">
-                            Toplam: @documents.Count dokuman, @documents.Sum(d => d.ChunkCount) chunk
+                            Total: @documents.Count documents, @documents.Sum(d => d.ChunkCount) chunks
                         </div>
                     }
                 </div>
@@ -148,17 +148,17 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Dokumani Sil</h5>
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2"></i>Delete Document</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p><strong id="deleteDocName"></strong> dokumanini silmek istediginize emin misiniz?</p>
-                <p class="text-muted small">Bu islem geri alinamaz ve tum versiyonlar silinecektir.</p>
+                <p>Are you sure you want to delete <strong id="deleteDocName"></strong>?</p>
+                <p class="text-muted small">This action cannot be undone and all versions will be deleted.</p>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Iptal</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-danger" id="confirmDeleteBtn" onclick="confirmDelete()">
-                    <i class="bi bi-trash me-1"></i>Sil
+                    <i class="bi bi-trash me-1"></i>Delete
                 </button>
             </div>
         </div>
@@ -207,7 +207,7 @@
                     fileInput.files = dataTransfer.files;
                     showSelectedFile(file);
                 } else {
-                    alert('Sadece .txt ve .pdf dosyalari desteklenir.');
+                    alert('Only .txt and .pdf files are supported.');
                 }
             }
         });
@@ -228,11 +228,11 @@
             // Dosya kontrolü
             if (!fileInput.files || fileInput.files.length === 0) {
                 e.preventDefault();
-                alert('Lütfen bir dosya seçin.');
+                alert('Please select a file.');
                 return false;
             }
 
-            uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Yukleniyor...';
+            uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading...';
             uploadBtn.disabled = true;
         });
 
@@ -246,7 +246,7 @@
             if (!pendingDeleteDocId) return;
 
             const btn = document.getElementById('confirmDeleteBtn');
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Siliniyor...';
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting...';
             btn.disabled = true;
 
             try {
@@ -264,14 +264,14 @@
                         row.remove();
                     }
                     bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
-                    showToast('Dokuman basariyla silindi.', 'success');
+                    showToast('Document deleted successfully.', 'success');
                 } else {
-                    showToast(result.message || 'Silme hatasi.', 'danger');
+                    showToast(result.message || 'Delete error.', 'danger');
                 }
             } catch (error) {
-                showToast('Bir hata olustu: ' + error.message, 'danger');
+                showToast('An error occurred: ' + error.message, 'danger');
             } finally {
-                btn.innerHTML = '<i class="bi bi-trash me-1"></i>Sil';
+                btn.innerHTML = '<i class="bi bi-trash me-1"></i>Delete';
                 btn.disabled = false;
                 pendingDeleteDocId = null;
             }

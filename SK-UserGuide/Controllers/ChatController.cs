@@ -13,20 +13,17 @@ public class ChatController : Controller
     }
 
     [HttpPost]
-    public async Task<IActionResult> Ask(string question, string? sessionId = null)
+    public async Task<IActionResult> Ask(string question)
     {
         if (string.IsNullOrWhiteSpace(question))
         {
             return Json(new { success = false, answer = "Empty message cannot be sent." });
         }
 
-        // Generate sessionId if not provided (for new conversations)
-        sessionId ??= HttpContext.Session.Id;
-
         try
         {
-            var answer = await _ragService.AskAsync(question, sessionId);
-            return Json(new { success = true, answer = answer, sessionId = sessionId });
+            var answer = await _ragService.AskAsync(question);
+            return Json(new { success = true, answer });
         }
         catch (Exception exception)
         {
@@ -42,18 +39,6 @@ public class ChatController : Controller
                 answer = errorMessage
             });
         }
-    }
-
-    [HttpPost]
-    public IActionResult ClearHistory(string sessionId)
-    {
-        if (string.IsNullOrEmpty(sessionId))
-        {
-            return Json(new { success = false, message = "Session ID required." });
-        }
-
-        _ragService.ClearChatHistory(sessionId);
-        return Json(new { success = true, message = "Chat history cleared." });
     }
 
     [HttpGet]

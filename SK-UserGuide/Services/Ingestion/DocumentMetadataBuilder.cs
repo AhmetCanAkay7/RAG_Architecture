@@ -60,7 +60,7 @@ public class DocumentMetadataBuilder
             CreatedAt = DateTime.UtcNow,
             ChunkIndex = chunk.Index,
             Text = chunk.Text,
-            Language = "tr",
+            Language = "en",
             ContentHash = GenerateContentHash(chunk.Text),
             Page = chunk.Page,
             SectionTitle = string.IsNullOrEmpty(chunk.SectionTitle) ? null : chunk.SectionTitle,

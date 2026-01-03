@@ -237,6 +237,9 @@ public class StructuralChunker
         // Heading always starts new block
         if (newType == BlockType.Heading) return true;
 
+        // Heading should be single line - split when paragraph follows
+        if (currentType == BlockType.Heading && newType == BlockType.Paragraph) return true;
+
         // Table transitions
         if (currentType == BlockType.Table && newType != BlockType.Table) return true;
         if (currentType != BlockType.Table && newType == BlockType.Table) return true;

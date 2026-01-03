@@ -6,16 +6,13 @@ namespace SK_UserGuide.Controllers
 {
     public class AdminController : Controller
     {
-        private readonly IRagService _ragService;
-        private readonly DocumentIngestionOrchestrator _ingestionOrchestrator;
-        private readonly QdrantIngestionRepository _qdrantRepo;
+        private readonly IDocumentIngestionOrchestrator _ingestionOrchestrator;
+        private readonly IQdrantIngestionRepository _qdrantRepo;
 
         public AdminController(
-            IRagService ragService,
-            DocumentIngestionOrchestrator ingestionOrchestrator,
-            QdrantIngestionRepository qdrantRepo)
+            IDocumentIngestionOrchestrator ingestionOrchestrator,
+            IQdrantIngestionRepository qdrantRepo)
         {
-            _ragService = ragService;
             _ingestionOrchestrator = ingestionOrchestrator;
             _qdrantRepo = qdrantRepo;
         }
@@ -33,7 +30,7 @@ namespace SK_UserGuide.Controllers
         {
             if (file == null || file.Length == 0)
             {
-                TempData["Error"] = "Lütfen bir dosya seçin.";
+                TempData["Error"] = "Please select a file.";
                 return RedirectToAction("Index");
             }
 
@@ -85,17 +82,17 @@ namespace SK_UserGuide.Controllers
         {
             if (string.IsNullOrWhiteSpace(docId))
             {
-                return Json(new { success = false, message = "DocId gerekli." });
+                return Json(new { success = false, message = "DocId is required." });
             }
 
             try
             {
                 await _qdrantRepo.DeleteByDocIdAsync(docId);
-                return Json(new { success = true, message = "Doküman başarıyla silindi." });
+                return Json(new { success = true, message = "Document deleted successfully." });
             }
             catch (Exception ex)
             {
-                return Json(new { success = false, message = $"Silme hatası: {ex.Message}" });
+                return Json(new { success = false, message = $"Delete error: {ex.Message}" });
             }
         }
 
@@ -107,17 +104,17 @@ namespace SK_UserGuide.Controllers
         {
             if (string.IsNullOrWhiteSpace(docId))
             {
-                return Json(new { success = false, message = "DocId gerekli." });
+                return Json(new { success = false, message = "DocId is required." });
             }
 
             try
             {
                 await _qdrantRepo.DeleteByDocIdAndVersionAsync(docId, version);
-                return Json(new { success = true, message = $"Doküman versiyon {version} başarıyla silindi." });
+                return Json(new { success = true, message = $"Document version {version} deleted successfully." });
             }
             catch (Exception ex)
             {
-                return Json(new { success = false, message = $"Silme hatası: {ex.Message}" });
+                return Json(new { success = false, message = $"Delete error: {ex.Message}" });
             }
         }
 
@@ -136,53 +133,6 @@ namespace SK_UserGuide.Controllers
             {
                 return Json(new { success = false, message = ex.Message, documents = Array.Empty<object>() });
             }
-        }
-
-        /// <summary>
-        /// Legacy upload endpoint (for backward compatibility).
-        /// </summary>
-        [HttpPost]
-        public async Task<IActionResult> UploadLegacy(IFormFile file)
-        {
-            if (file == null || file.Length == 0)
-            {
-                ModelState.AddModelError("", "Lutfen bir dosya secin.");
-                return await LoadIndexViewAsync();
-            }
-
-            string text = "";
-            string extension = Path.GetExtension(file.FileName).ToLower();
-
-            if (extension == ".txt")
-            {
-                using (var reader = new StreamReader(file.OpenReadStream()))
-                {
-                    text = await reader.ReadToEndAsync();
-                }
-            }
-            else if (extension == ".pdf")
-            {
-                using var pdfReader = new iText.Kernel.Pdf.PdfReader(file.OpenReadStream());
-                using var pdfDoc = new iText.Kernel.Pdf.PdfDocument(pdfReader);
-                var strategy = new iText.Kernel.Pdf.Canvas.Parser.Listener.SimpleTextExtractionStrategy();
-                for (int i = 1; i <= pdfDoc.GetNumberOfPages(); ++i)
-                {
-                    var page = pdfDoc.GetPage(i);
-                    text += iText.Kernel.Pdf.Canvas.Parser.PdfTextExtractor.GetTextFromPage(page, strategy);
-                }
-            }
-            else
-            {
-                ModelState.AddModelError("", "Sadece .txt ve .pdf dosyalari desteklenir.");
-                return await LoadIndexViewAsync();
-            }
-
-            // Embedding ve store (legacy)
-            string id = Guid.NewGuid().ToString();
-            await _ragService.AddDocumentAsync(text, id);
-
-            ViewBag.Message = "Dosya basariyla yuklendi ve islendi (legacy).";
-            return await LoadIndexViewAsync();
         }
     }
 }

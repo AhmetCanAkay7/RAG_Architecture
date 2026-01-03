@@ -62,8 +62,15 @@
     }
 
     @@keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
+
+        0%,
+        100% {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: 0.5;
+        }
     }
 
     /* Mesaj Alan? */
@@ -90,6 +97,7 @@
             opacity: 0;
             transform: translateY(10px);
         }
+
         to {
             opacity: 1;
             transform: translateY(0);
@@ -141,12 +149,25 @@
         animation: typing 1.4s infinite ease-in-out;
     }
 
-    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    .typing-indicator span:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .typing-indicator span:nth-child(3) {
+        animation-delay: 0.4s;
+    }
 
     @@keyframes typing {
-        0%, 60%, 100% { transform: translateY(0); }
-        30% { transform: translateY(-10px); }
+
+        0%,
+        60%,
+        100% {
+            transform: translateY(0);
+        }
+
+        30% {
+            transform: translateY(-10px);
+        }
     }
 
     /* Input Alan? */
@@ -284,38 +305,42 @@
 <div class="chat-container">
     <!-- Header -->
     <div class="chat-header">
-        <div class="avatar">??</div>
+        <div class="avatar">🤖</div>
         <div class="info">
-            <h4>SK UserGuide Asistan</h4>
-            <span><span class="status-dot"></span>Çevrimiçi - Yard?ma haz?r</span>
+            <h4>SK UserGuide Assistant</h4>
+            <span><span class="status-dot"></span>Online - Ready to help</span>
         </div>
     </div>
 
     <!-- Messages -->
     <div class="chat-messages" id="chatMessages">
         <div class="welcome-card">
-            <h5> Hoş Geldiniz!</h5>
-            <p>Şirket içi rehber asistanınızım. Dosya paylaşımı, VPN, yemekhane ve daha fazlası hakkında sorularınızı yanıtlayabilirim.</p>
+            <h5>👋 Welcome!</h5>
+            <p>I'm your Supply Chain & Planning assistant. Ask me about demand forecasting, inventory management,
+                production schedules, and more.</p>
             <div class="quick-actions">
-                <button class="quick-btn" onclick="askQuickQuestion('VPN parolası nasıl degistirilir?')"> VPN Parola</button>
-                <button class="quick-btn" onclick="askQuickQuestion('Dosya paylasımı nasıl yapılır?')"> Dosya Paylasımı</button>
-                <button class="quick-btn" onclick="askQuickQuestion('Yemekhane saatleri nedir?')"> Yemekhane</button>
+                <button class="quick-btn"
+                    onclick="askQuickQuestion('Analyze the demand forecast for the next quarter based on historical sales data.')">📊
+                    Demand Forecast</button>
+                <button class="quick-btn"
+                    onclick="askQuickQuestion('Show me the current inventory levels for SKU-1024 across all warehouses.')">📦
+                    Inventory Levels</button>
+                <button class="quick-btn"
+                    onclick="askQuickQuestion('Identify potential supply chain bottlenecks in the production schedule for next week.')">⚠️
+                    Bottlenecks</button>
             </div>
         </div>
-        
+
         <div class="message bot">
-            Merhaba! Size nasıl yardımcı olabilirim? 
-            <span class="time">şimdi</span>
+            Hello! How can I help you today?
+            <span class="time">now</span>
         </div>
     </div>
 
     <!-- Input -->
     <div class="chat-input">
-        <input type="text" 
-               id="questionInput" 
-               placeholder="Sorunuzu buraya yazın..." 
-               autocomplete="off"
-               onkeypress="handleKeyPress(event)">
+        <input type="text" id="questionInput" placeholder="Type your question here..." autocomplete="off"
+            onkeypress="handleKeyPress(event)">
         <button class="btn-send" id="sendBtn" onclick="sendQuestion()">
             <span>?</span>
         </button>
@@ -342,9 +367,9 @@
             sendQuestion();
         }
 
-        // Saat formatla
+        // Format time
         function formatTime() {
-            return new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+            return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
         }
 
         // Mesaj ekle
@@ -352,9 +377,9 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'user' : (isError ? 'bot error' : 'bot')}`;
             messageDiv.innerHTML = `
-                ${text}
-                <span class="time">${formatTime()}</span>
-            `;
+                        ${text}
+                        <span class="time">${formatTime()}</span>
+                    `;
             chatMessages.appendChild(messageDiv);
             scrollToBottom();
         }
@@ -383,7 +408,7 @@
         // Soru gönder
         async function sendQuestion() {
             const question = questionInput.value.trim();
-            
+
             if (!question) {
                 questionInput.focus();
                 return;
@@ -411,7 +436,7 @@
                 });
 
                 const result = await response.json();
-                
+
                 hideTypingIndicator();
 
                 if (result.success) {
@@ -421,7 +446,7 @@
                 }
             } catch (error) {
                 hideTypingIndicator();
-                addMessage('? Sunucuya ba?lan?rken bir hata olu?tu. Lütfen tekrar deneyin.', false, true);
+                addMessage('❌ An error occurred while connecting to the server. Please try again.', false, true);
                 console.error('Error:', error);
             } finally {
                 // UI'? tekrar aktif et

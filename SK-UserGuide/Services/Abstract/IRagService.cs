@@ -3,14 +3,7 @@
 public interface IRagService
 {
     /// <summary>
-    /// Ask a question with optional session for chat history.
+    /// Ask a question using RAG pipeline with response caching.
     /// </summary>
-    Task<string> AskAsync(string question, string? sessionId = null);
-
-    Task AddDocumentAsync(string text, string id);
-
-    /// <summary>
-    /// Clear chat history for a session.
-    /// </summary>
-    void ClearChatHistory(string sessionId);
+    Task<string> AskAsync(string question);
 }

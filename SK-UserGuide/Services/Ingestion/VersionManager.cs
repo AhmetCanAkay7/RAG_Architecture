@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using SK_UserGuide.Configuration;
+using SK_UserGuide.Services.Abstract;
 
 namespace SK_UserGuide.Services.Ingestion;
 
@@ -10,7 +11,7 @@ namespace SK_UserGuide.Services.Ingestion;
 /// Manages document versions in Qdrant.
 /// Handles version tracking and old version cleanup.
 /// </summary>
-public class VersionManager
+public class VersionManager : IVersionManager
 {
     private readonly HttpClient _httpClient;
     private readonly QdrantSettings _settings;

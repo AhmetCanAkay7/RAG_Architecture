@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using SK_UserGuide.Services.Abstract;
 
 namespace SK_UserGuide.Services.Ingestion;
 
@@ -8,15 +9,15 @@ namespace SK_UserGuide.Services.Ingestion;
 /// Orchestrates the complete document ingestion pipeline:
 /// Extract → Clean → Chunk → Embed → Store
 /// </summary>
-public class DocumentIngestionOrchestrator
+public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
 {
     private readonly PdfTextExtractor _pdfExtractor;
     private readonly TxtTextExtractor _txtExtractor;
     private readonly TextCleaner _textCleaner;
     private readonly StructuralChunker _chunker;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
-    private readonly QdrantIngestionRepository _qdrantRepo;
-    private readonly VersionManager _versionManager;
+    private readonly IQdrantIngestionRepository _qdrantRepo;
+    private readonly IVersionManager _versionManager;
     private readonly DocumentMetadataBuilder _metadataBuilder;
     private readonly ILogger<DocumentIngestionOrchestrator> _logger;
 
@@ -26,8 +27,8 @@ public class DocumentIngestionOrchestrator
         TextCleaner textCleaner,
         StructuralChunker chunker,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-        QdrantIngestionRepository qdrantRepo,
-        VersionManager versionManager,
+        IQdrantIngestionRepository qdrantRepo,
+        IVersionManager versionManager,
         DocumentMetadataBuilder metadataBuilder,
         ILogger<DocumentIngestionOrchestrator> logger)
     {

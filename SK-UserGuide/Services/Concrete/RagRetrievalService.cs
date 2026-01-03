@@ -1,4 +1,5 @@
 using Microsoft.SemanticKernel;
+using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.LLM;
 using SK_UserGuide.Services.Retrieval;
 
@@ -7,9 +8,9 @@ namespace SK_UserGuide.Services.Concrete;
 /// <summary>
 /// RAG retrieval service with context compression, chat history, and structured responses.
 /// </summary>
-public class RagRetrievalService
+public class RagRetrievalService : IRagRetrievalService
 {
-    private readonly HybridRetrievalService _hybridRetrieval;
+    private readonly IHybridRetrievalService _hybridRetrieval;
     private readonly Kernel _kernel;
     private readonly ContextCompressor _compressor;
     private readonly PromptBuilder _promptBuilder;
@@ -17,7 +18,7 @@ public class RagRetrievalService
     private readonly QueryTranslator _queryTranslator;
 
     public RagRetrievalService(
-        HybridRetrievalService hybridRetrieval,
+        IHybridRetrievalService hybridRetrieval,
         Kernel kernel,
         QueryTranslator? queryTranslator = null)
     {
