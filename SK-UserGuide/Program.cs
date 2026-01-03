@@ -55,7 +55,20 @@ builder.Services.AddSingleton(kernelBuilder.Build());
 // 5. Hybrid Retrieval Service (NEW)
 builder.Services.AddHttpClient<HybridRetrievalService>();
 
-// 6. RAG Services
+// 6. Chat History Manager (in-memory, singleton)
+builder.Services.AddSingleton<SK_UserGuide.Services.Chat.ChatHistoryManager>();
+builder.Services.AddSingleton<SK_UserGuide.Services.Chat.ResponseCache>();
+
+// 7. Session support for chat history
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+});
+
+// 8. RAG Services
 builder.Services.AddScoped<RagIngestionService>();
 builder.Services.AddScoped<RagRetrievalService>();
 builder.Services.AddScoped<IRagService, RagService>();
@@ -82,6 +95,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseRouting();
+app.UseSession();  // Enable session for chat history
 app.UseAuthorization();
 
 app.MapStaticAssets();

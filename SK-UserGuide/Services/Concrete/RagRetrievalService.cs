@@ -5,7 +5,7 @@ using SK_UserGuide.Services.Retrieval;
 namespace SK_UserGuide.Services.Concrete;
 
 /// <summary>
-/// RAG retrieval service with context compression and structured responses.
+/// RAG retrieval service with context compression, chat history, and structured responses.
 /// </summary>
 public class RagRetrievalService
 {
@@ -30,9 +30,9 @@ public class RagRetrievalService
     }
 
     /// <summary>
-    /// Process a question with RAG pipeline.
+    /// Process a question with RAG pipeline, optionally including conversation history.
     /// </summary>
-    public async Task<string> AskAsync(string question)
+    public async Task<string> AskAsync(string question, string? conversationContext = null)
     {
         // 1. Optionally translate query to English
         var translationResult = await _queryTranslator.TranslateIfNeededAsync(question);
@@ -51,10 +51,13 @@ public class RagRetrievalService
         var compressedContext = _compressor.Compress(
             retrievalResult.SelectedChunks,
             processedQuestion,
-            "EN"); // Default to English
+            "EN");
 
-        // 4. Build prompt
-        var prompt = _promptBuilder.Build(processedQuestion, compressedContext);
+        // 4. Build prompt (now with optional chat history)
+        var prompt = _promptBuilder.BuildWithHistory(
+            processedQuestion,
+            compressedContext,
+            conversationContext);
 
         // 5. Call LLM
         var rawAnswer = await CallLLMAsync(prompt);
@@ -63,7 +66,7 @@ public class RagRetrievalService
         var response = _responseFormatter.Format(
             rawAnswer,
             compressedContext,
-            "EN"); // Default to English
+            "EN");
 
         return response.ToDisplayString();
     }
@@ -83,8 +86,8 @@ public class RagRetrievalService
             {
                 ExtensionData = new Dictionary<string, object>
                 {
-                    ["max_tokens"] = 256,      // ~150-200 words max
-                    ["temperature"] = 0.3      // Lower = more focused answers
+                    ["max_tokens"] = 256,
+                    ["temperature"] = 0.3
                 }
             };
 
@@ -97,4 +100,3 @@ public class RagRetrievalService
         }
     }
 }
-

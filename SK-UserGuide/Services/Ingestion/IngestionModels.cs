@@ -9,7 +9,8 @@ public enum BlockType
     Heading,
     Paragraph,
     StepList,
-    BulletList
+    BulletList,
+    Table       // Markdown table blocks (lines starting with |)
 }
 
 /// <summary>

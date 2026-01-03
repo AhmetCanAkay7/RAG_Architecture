@@ -11,20 +11,40 @@ public class PromptBuilder
     private const string SystemPrompt = @"You are an enterprise knowledge assistant. Use ONLY the provided context. Cite sources: [1], [2]. Respond concisely.";
 
     /// <summary>
-    /// Build the complete prompt for LLM.
+    /// Build the complete prompt for LLM (without chat history).
     /// </summary>
     public string Build(string question, CompressedContext context)
     {
+        return BuildWithHistory(question, context, null);
+    }
+
+    /// <summary>
+    /// Build the complete prompt for LLM with optional chat history.
+    /// </summary>
+    public string BuildWithHistory(string question, CompressedContext context, string? conversationHistory = null)
+    {
         var formattedContext = FormatContext(context);
+        var sb = new StringBuilder();
 
-        return $@"{SystemPrompt}
+        sb.AppendLine(SystemPrompt);
+        sb.AppendLine();
 
-CONTEXT:
-{formattedContext}
+        // Include conversation history if available
+        if (!string.IsNullOrEmpty(conversationHistory))
+        {
+            sb.AppendLine("CONVERSATION HISTORY:");
+            sb.AppendLine(conversationHistory);
+            sb.AppendLine();
+        }
 
-QUESTION: {question}
+        sb.AppendLine("CONTEXT:");
+        sb.AppendLine(formattedContext);
+        sb.AppendLine();
+        sb.AppendLine($"QUESTION: {question}");
+        sb.AppendLine();
+        sb.Append("ANSWER:");
 
-ANSWER:";
+        return sb.ToString();
     }
 
     /// <summary>
