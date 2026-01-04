@@ -14,9 +14,10 @@ public record ContextItem
     public double OriginalScore { get; init; }
 
     /// <summary>
-    /// Estimated token count (Turkish: ~3.5 chars/token)
+    /// Estimated token count for compressed text.
+    /// Uses character-based estimation since original token count doesn't apply after sentence extraction.
     /// </summary>
-    public int EstimatedTokens => (int)(Text.Length / 3.5);
+    public int EstimatedTokens => (int)(Text.Length / 4.0);  // ~4 chars/token for English
 }
 
 /// <summary>
@@ -52,7 +53,7 @@ public record Citation
     public override string ToString()
     {
         var parts = new List<string> { DocName };
-        if (Page.HasValue) parts.Add($"Sayfa {Page}");
+        if (Page.HasValue) parts.Add($"Page {Page}");
         if (!string.IsNullOrEmpty(Section)) parts.Add(Section);
         return $"[{Index}] {string.Join(" > ", parts)}";
     }
@@ -107,9 +108,10 @@ public record RagResponse
         {
             sb.AppendLine();
             sb.AppendLine(ResponseLanguage == "TR" ? "📚 **Kaynaklar:**" : "📚 **Sources:**");
+            sb.AppendLine();
             foreach (var cite in Citations)
             {
-                sb.AppendLine(cite.ToString());
+                sb.AppendLine($"- {cite}");  // Markdown list format
             }
         }
 

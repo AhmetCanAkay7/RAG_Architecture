@@ -16,9 +16,10 @@ public record ScoredChunk
     public int? Version { get; init; }
 
     /// <summary>
-    /// Estimated token count for this chunk.
+    /// Actual token count from Qdrant metadata (calculated with Tiktoken during ingestion).
+    /// Falls back to character-based estimation if not available.
     /// </summary>
-    public int EstimatedTokens => (int)(Text.Length / 3.5);
+    public int EstimatedTokens { get; init; }
 }
 
 /// <summary>

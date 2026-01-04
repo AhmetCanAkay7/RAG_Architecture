@@ -6,7 +6,7 @@ namespace SK_UserGuide.Services.Abstract;
 public interface IRagRetrievalService
 {
     /// <summary>
-    /// Process a question with RAG pipeline, optionally including conversation history.
+    /// Process a question with RAG pipeline.
     /// </summary>
-    Task<string> AskAsync(string question, string? conversationContext = null);
+    Task<string> AskAsync(string question);
 }

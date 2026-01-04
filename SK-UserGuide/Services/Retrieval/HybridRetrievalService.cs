@@ -305,18 +305,24 @@ public class HybridRetrievalService : IHybridRetrievalService
     private ScoredChunk ToScoredChunk(QdrantRestClient.SearchResult result, double score)
     {
         var payload = result.Payload;
+        var text = GetPayloadString(payload, "text");
+
+        // Use actual token count from Qdrant metadata, fallback to character estimation
+        var storedTokens = GetPayloadInt(payload, "estimated_tokens");
+        var estimatedTokens = storedTokens ?? (int)(text.Length / 3.5);
 
         return new ScoredChunk
         {
             Id = result.Id,
             Score = score,
-            Text = GetPayloadString(payload, "text"),
+            Text = text,
             DocId = GetPayloadString(payload, "doc_id"),
             DocName = GetPayloadString(payload, "doc_name"),
             SectionTitle = GetPayloadString(payload, "section_title"),
             Page = GetPayloadInt(payload, "page"),
             ChunkIndex = GetPayloadInt(payload, "chunk_index"),
-            Version = GetPayloadInt(payload, "version")
+            Version = GetPayloadInt(payload, "version"),
+            EstimatedTokens = estimatedTokens
         };
     }
 

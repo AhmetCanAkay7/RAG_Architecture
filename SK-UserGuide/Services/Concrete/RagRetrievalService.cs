@@ -6,7 +6,7 @@ using SK_UserGuide.Services.Retrieval;
 namespace SK_UserGuide.Services.Concrete;
 
 /// <summary>
-/// RAG retrieval service with context compression, chat history, and structured responses.
+/// RAG retrieval service with context compression and structured responses.
 /// </summary>
 public class RagRetrievalService : IRagRetrievalService
 {
@@ -31,9 +31,9 @@ public class RagRetrievalService : IRagRetrievalService
     }
 
     /// <summary>
-    /// Process a question with RAG pipeline, optionally including conversation history.
+    /// Process a question with RAG pipeline.
     /// </summary>
-    public async Task<string> AskAsync(string question, string? conversationContext = null)
+    public async Task<string> AskAsync(string question)
     {
         // 1. Optionally translate query to English
         var translationResult = await _queryTranslator.TranslateIfNeededAsync(question);
@@ -54,11 +54,10 @@ public class RagRetrievalService : IRagRetrievalService
             processedQuestion,
             "EN");
 
-        // 4. Build prompt (now with optional chat history)
-        var prompt = _promptBuilder.BuildWithHistory(
+        // 4. Build prompt
+        var prompt = _promptBuilder.Build(
             processedQuestion,
-            compressedContext,
-            conversationContext);
+            compressedContext);
 
         // 5. Call LLM
         var rawAnswer = await CallLLMAsync(prompt);

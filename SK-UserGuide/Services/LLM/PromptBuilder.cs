@@ -11,7 +11,7 @@ public class PromptBuilder
     private const string SystemPrompt = @"You are an enterprise knowledge assistant. Use ONLY the provided context. Cite sources: [1], [2]. Respond concisely.";
 
     /// <summary>
-    /// Build the complete prompt for LLM (without chat history).
+    /// Build the complete prompt for LLM.
     /// </summary>
     public string Build(string question, CompressedContext context)
     {
