@@ -35,7 +35,7 @@ public class ContextCompressor
         {
             var sentences = SplitToSentences(chunk.Text);
             var relevantSentences = SelectRelevantSentences(
-                sentences, questionKeywords, MaxSentencesPerChunk);
+                sentences, questionKeywords, MaxSentencesPerChunk, chunk.Text);
 
             if (relevantSentences.Count > 0)
             {
@@ -89,9 +89,14 @@ public class ContextCompressor
     private List<string> SelectRelevantSentences(
         List<string> sentences,
         HashSet<string> keywords,
-        int maxCount)
+        int maxCount,
+        string originalText)
     {
         if (sentences.Count <= maxCount)
+            return sentences;
+
+        // Check if content should be preserved intact (lists, code, tables)
+        if (ShouldPreserveIntact(sentences, originalText))
             return sentences;
 
         // Score sentences by keyword overlap
@@ -107,6 +112,76 @@ public class ContextCompressor
 
         // Preserve original order
         return sentences.Where(s => scored.Contains(s)).ToList();
+    }
+
+    /// <summary>
+    /// Detects if content should be preserved intact without sentence extraction.
+    /// Covers: numbered lists, code blocks, tables.
+    /// </summary>
+    private bool ShouldPreserveIntact(List<string> sentences, string originalText)
+    {
+        // 1. Numbered/Step List Detection
+        if (IsNumberedList(sentences))
+            return true;
+
+        // 2. Code Block Detection (fenced or brace-heavy)
+        if (IsCodeBlock(originalText))
+            return true;
+
+        // 3. Table Detection (markdown tables with | delimiters)
+        if (IsTable(sentences))
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Detects numbered/step lists.
+    /// </summary>
+    private bool IsNumberedList(List<string> sentences)
+    {
+        if (sentences.Count < 3)
+            return false;
+
+        var listPatternCount = sentences.Count(s =>
+            Regex.IsMatch(s.TrimStart(), @"^(Step\s*\d+[:\.\)]|\d+[\.\)]\s|[a-z][\.\)]\s|[-•*]\s)", RegexOptions.IgnoreCase));
+
+        return listPatternCount >= sentences.Count * 0.5;
+    }
+
+    /// <summary>
+    /// Detects code blocks (fenced or brace-heavy content).
+    /// </summary>
+    private bool IsCodeBlock(string text)
+    {
+        // Fenced code blocks
+        if (text.Contains("```"))
+            return true;
+
+        // Brace-heavy content (likely code)
+        var braceCount = text.Count(c => c == '{' || c == '}');
+        if (braceCount >= 4)
+            return true;
+
+        // Indented code (4+ spaces at start of multiple lines)
+        var lines = text.Split('\n');
+        var indentedCount = lines.Count(l => l.StartsWith("    ") || l.StartsWith("\t"));
+        if (indentedCount >= lines.Length * 0.5 && indentedCount >= 3)
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Detects markdown tables.
+    /// </summary>
+    private bool IsTable(List<string> sentences)
+    {
+        // Table rows have multiple | characters
+        var tableRowCount = sentences.Count(s =>
+            s.Contains('|') && s.Count(c => c == '|') >= 2);
+
+        return tableRowCount >= 2;
     }
 
     private double CalculateKeywordOverlap(string sentence, HashSet<string> keywords)

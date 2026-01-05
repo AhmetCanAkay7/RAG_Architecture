@@ -27,6 +27,7 @@ public class StructuralChunker
 
     private readonly TextCleaner _textCleaner;
     private readonly Tokenizer _tokenizer;
+    private readonly HierarchicalContextBuilder _contextBuilder;
 
     public StructuralChunker(TextCleaner textCleaner)
     {
@@ -35,6 +36,9 @@ public class StructuralChunker
         // Initialize Tiktoken tokenizer with cl100k_base encoding
         // Compatible with nomic-embed-text embedding model
         _tokenizer = TiktokenTokenizer.CreateForEncoding("cl100k_base");
+
+        // Initialize hierarchical context builder for breadcrumb-style section tracking
+        _contextBuilder = new HierarchicalContextBuilder();
     }
 
     /// <summary>
@@ -63,7 +67,7 @@ public class StructuralChunker
         var blocks = ParseStructuralBlocks(cleanedDoc);
 
         var currentChunk = new ChunkBuilder(CountTokens);
-        string currentSection = "";
+        _contextBuilder.Reset(); // Reset for new document
         int chunkIndex = 0;
 
         foreach (var block in blocks)
@@ -79,13 +83,15 @@ public class StructuralChunker
                 // Always finalize current chunk if it has content (no matter how short)
                 if (currentChunk.HasContent)
                 {
-                    chunks.Add(currentChunk.Build(chunkIndex++, currentSection));
+                    chunks.Add(currentChunk.Build(chunkIndex++, _contextBuilder.GetFullSectionPath()));
                     currentChunk = new ChunkBuilder(CountTokens);
                 }
 
-                // Start new section with this heading
-                currentSection = block.Text.Trim();
-                currentChunk.AppendWithContext(block, currentSection);
+                // Update hierarchical context with new heading
+                _contextBuilder.ProcessHeading(block.Text);
+
+                // Start new section with hierarchical context prefix
+                currentChunk.AppendWithContext(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath());
                 continue;
             }
 
@@ -96,7 +102,7 @@ public class StructuralChunker
                 // Finalize current chunk first
                 if (currentChunk.HasContent)
                 {
-                    chunks.Add(currentChunk.Build(chunkIndex++, currentSection));
+                    chunks.Add(currentChunk.Build(chunkIndex++, _contextBuilder.GetFullSectionPath()));
                     currentChunk = new ChunkBuilder(CountTokens);
                 }
 
@@ -105,12 +111,12 @@ public class StructuralChunker
                 // Keep table atomic if within tolerance (350 * 1.5 = 525 tokens)
                 if (tableTokens <= TargetTokenMax * TableTokenTolerance)
                 {
-                    chunks.Add(CreateTableChunk(block, currentSection, chunkIndex++));
+                    chunks.Add(CreateTableChunk(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath(), chunkIndex++));
                 }
                 else
                 {
                     // Table too large - split by rows while preserving header
-                    var tableChunks = SplitLargeTable(block, currentSection, ref chunkIndex);
+                    var tableChunks = SplitLargeTable(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath(), ref chunkIndex);
                     chunks.AddRange(tableChunks);
                 }
                 continue;
@@ -122,11 +128,11 @@ public class StructuralChunker
             {
                 if (currentChunk.HasContent)
                 {
-                    chunks.Add(currentChunk.Build(chunkIndex++, currentSection));
+                    chunks.Add(currentChunk.Build(chunkIndex++, _contextBuilder.GetFullSectionPath()));
                     currentChunk = new ChunkBuilder(CountTokens);
                 }
 
-                var stepChunks = ChunkStepList(block, currentSection, ref chunkIndex);
+                var stepChunks = ChunkStepList(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath(), ref chunkIndex);
                 chunks.AddRange(stepChunks);
                 continue;
             }
@@ -141,11 +147,11 @@ public class StructuralChunker
             {
                 if (currentChunk.HasContent)
                 {
-                    chunks.Add(currentChunk.Build(chunkIndex++, currentSection));
+                    chunks.Add(currentChunk.Build(chunkIndex++, _contextBuilder.GetFullSectionPath()));
                     currentChunk = new ChunkBuilder(CountTokens);
                 }
 
-                var splitChunks = SplitLongParagraph(block.Text, currentSection, block.Page, ref chunkIndex);
+                var splitChunks = SplitLongParagraph(block.Text, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath(), block.Page, ref chunkIndex);
                 chunks.AddRange(splitChunks);
                 continue;
             }
@@ -153,7 +159,7 @@ public class StructuralChunker
             // Would exceed budget - finalize and start new with overlap
             if (projectedTokens > TargetTokenMax && currentChunk.HasContent)
             {
-                chunks.Add(currentChunk.Build(chunkIndex++, currentSection));
+                chunks.Add(currentChunk.Build(chunkIndex++, _contextBuilder.GetFullSectionPath()));
 
                 // Start new chunk with overlap
                 currentChunk = new ChunkBuilder(CountTokens);
@@ -167,19 +173,19 @@ public class StructuralChunker
                 }
 
                 // Inject context for new chunk
-                currentChunk.AppendWithContext(block, currentSection);
+                currentChunk.AppendWithContext(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath());
             }
             else
             {
                 // Fits in current chunk
-                currentChunk.AppendWithContext(block, currentSection);
+                currentChunk.AppendWithContext(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath());
             }
         }
 
         // Save last chunk
         if (currentChunk.HasContent)
         {
-            chunks.Add(currentChunk.Build(chunkIndex, currentSection));
+            chunks.Add(currentChunk.Build(chunkIndex, _contextBuilder.GetFullSectionPath()));
         }
 
         // Merge very short chunks (but not across section boundaries)
@@ -298,17 +304,17 @@ public class StructuralChunker
     /// <summary>
     /// Create a chunk for a table block with context injection.
     /// </summary>
-    private ChunkResult CreateTableChunk(StructuralBlock block, string section, int index)
+    private ChunkResult CreateTableChunk(StructuralBlock block, string contextPrefix, string sectionPath, int index)
     {
-        var textWithContext = string.IsNullOrEmpty(section)
+        var textWithContext = string.IsNullOrEmpty(contextPrefix)
             ? block.Text
-            : $"[Section: {section}] > {block.Text}";
+            : contextPrefix + block.Text;
 
         return new ChunkResult
         {
             Index = index,
             Text = textWithContext,
-            SectionTitle = section,
+            SectionTitle = sectionPath,
             Page = block.Page,
             EstimatedTokens = CountTokens(textWithContext),
             HasOverlap = false
@@ -318,7 +324,7 @@ public class StructuralChunker
     /// <summary>
     /// Split a large table by rows while preserving header.
     /// </summary>
-    private List<ChunkResult> SplitLargeTable(StructuralBlock block, string section, ref int chunkIndex)
+    private List<ChunkResult> SplitLargeTable(StructuralBlock block, string contextPrefix, string sectionPath, ref int chunkIndex)
     {
         var chunks = new List<ChunkResult>();
         var lines = block.Text.Split('\n');
@@ -358,15 +364,15 @@ public class StructuralChunker
             {
                 // Create chunk with header + current rows
                 var tableText = header + "\n" + string.Join("\n", currentRows);
-                var textWithContext = string.IsNullOrEmpty(section)
+                var textWithContext = string.IsNullOrEmpty(contextPrefix)
                     ? tableText
-                    : $"[Section: {section}] > {tableText}";
+                    : contextPrefix + tableText;
 
                 chunks.Add(new ChunkResult
                 {
                     Index = chunkIndex++,
                     Text = textWithContext,
-                    SectionTitle = section,
+                    SectionTitle = sectionPath,
                     Page = block.Page,
                     EstimatedTokens = CountTokens(textWithContext),
                     HasOverlap = false
@@ -384,15 +390,15 @@ public class StructuralChunker
         if (currentRows.Count > 0)
         {
             var tableText = header + "\n" + string.Join("\n", currentRows);
-            var textWithContext = string.IsNullOrEmpty(section)
+            var textWithContext = string.IsNullOrEmpty(contextPrefix)
                 ? tableText
-                : $"[Section: {section}] > {tableText}";
+                : contextPrefix + tableText;
 
             chunks.Add(new ChunkResult
             {
                 Index = chunkIndex++,
                 Text = textWithContext,
-                SectionTitle = section,
+                SectionTitle = sectionPath,
                 Page = block.Page,
                 EstimatedTokens = CountTokens(textWithContext),
                 HasOverlap = false
@@ -405,22 +411,22 @@ public class StructuralChunker
     /// <summary>
     /// Chunk a step list while trying to keep related steps together.
     /// </summary>
-    private List<ChunkResult> ChunkStepList(StructuralBlock block, string section, ref int chunkIndex)
+    private List<ChunkResult> ChunkStepList(StructuralBlock block, string contextPrefix, string sectionPath, ref int chunkIndex)
     {
         var chunks = new List<ChunkResult>();
         var steps = ParseIndividualSteps(block.Text);
 
         if (steps.Count == 0)
         {
-            var textWithContext = string.IsNullOrEmpty(section)
+            var textWithContext = string.IsNullOrEmpty(contextPrefix)
                 ? block.Text
-                : $"[Section: {section}] > {block.Text}";
+                : contextPrefix + block.Text;
             var tokens = CountTokens(textWithContext);
             chunks.Add(new ChunkResult
             {
                 Index = chunkIndex++,
                 Text = textWithContext,
-                SectionTitle = section,
+                SectionTitle = sectionPath,
                 Page = block.Page,
                 EstimatedTokens = tokens,
                 HasOverlap = false
@@ -430,7 +436,6 @@ public class StructuralChunker
 
         var currentSteps = new List<string>();
         int currentTokens = 0;
-        var contextPrefix = string.IsNullOrEmpty(section) ? "" : $"[Section: {section}] > ";
         var contextTokens = CountTokens(contextPrefix);
 
         foreach (var step in steps)
@@ -442,7 +447,7 @@ public class StructuralChunker
             {
                 if (currentSteps.Any())
                 {
-                    chunks.Add(CreateStepChunk(currentSteps, section, chunkIndex++, block.Page, contextPrefix));
+                    chunks.Add(CreateStepChunk(currentSteps, sectionPath, chunkIndex++, block.Page, contextPrefix));
                     currentSteps.Clear();
                     currentTokens = 0;
                 }
@@ -452,7 +457,7 @@ public class StructuralChunker
                 {
                     Index = chunkIndex++,
                     Text = textWithContext,
-                    SectionTitle = section,
+                    SectionTitle = sectionPath,
                     Page = block.Page,
                     EstimatedTokens = CountTokens(textWithContext),
                     HasOverlap = false
@@ -463,7 +468,7 @@ public class StructuralChunker
             // Would exceed budget
             if (currentTokens + stepTokens + contextTokens > TargetTokenMax && currentSteps.Any())
             {
-                chunks.Add(CreateStepChunk(currentSteps, section, chunkIndex++, block.Page, contextPrefix));
+                chunks.Add(CreateStepChunk(currentSteps, sectionPath, chunkIndex++, block.Page, contextPrefix));
                 currentSteps.Clear();
                 currentTokens = 0;
             }
@@ -474,7 +479,7 @@ public class StructuralChunker
 
         if (currentSteps.Any())
         {
-            chunks.Add(CreateStepChunk(currentSteps, section, chunkIndex++, block.Page, contextPrefix));
+            chunks.Add(CreateStepChunk(currentSteps, sectionPath, chunkIndex++, block.Page, contextPrefix));
         }
 
         return chunks;
@@ -515,16 +520,15 @@ public class StructuralChunker
     /// <summary>
     /// Split a long paragraph into multiple chunks by sentences.
     /// </summary>
-    private List<ChunkResult> SplitLongParagraph(string text, string section, int? page, ref int chunkIndex)
+    private List<ChunkResult> SplitLongParagraph(string text, string contextPrefix, string sectionPath, int? page, ref int chunkIndex)
     {
         var chunks = new List<ChunkResult>();
         var sentences = SplitIntoSentences(text);
-        var contextPrefix = string.IsNullOrEmpty(section) ? "" : $"[Section: {section}] > ";
         var contextTokens = CountTokens(contextPrefix);
 
         if (sentences.Count == 0)
         {
-            return SplitByCharacters(text, section, page, ref chunkIndex);
+            return SplitByCharacters(text, contextPrefix, sectionPath, page, ref chunkIndex);
         }
 
         var currentText = new StringBuilder();
@@ -542,13 +546,13 @@ public class StructuralChunker
                 if (currentText.Length > 0)
                 {
                     var chunkText = contextPrefix + currentText.ToString().Trim();
-                    chunks.Add(CreateParagraphChunk(chunkText, section, page, chunkIndex++, hasOverlap));
+                    chunks.Add(CreateParagraphChunk(chunkText, sectionPath, page, chunkIndex++, hasOverlap));
                     lastOverlap = GetOverlapText(currentText.ToString());
                     currentText.Clear();
                     currentTokens = contextTokens;
                 }
 
-                var splitChunks = SplitByCharacters(sentence, section, page, ref chunkIndex);
+                var splitChunks = SplitByCharacters(sentence, contextPrefix, sectionPath, page, ref chunkIndex);
                 chunks.AddRange(splitChunks);
                 if (splitChunks.Count > 0)
                 {
@@ -562,7 +566,7 @@ public class StructuralChunker
             if (currentTokens + sentenceTokens > TargetTokenMax && currentText.Length > 0)
             {
                 var chunkText = contextPrefix + currentText.ToString().Trim();
-                chunks.Add(CreateParagraphChunk(chunkText, section, page, chunkIndex++, hasOverlap));
+                chunks.Add(CreateParagraphChunk(chunkText, sectionPath, page, chunkIndex++, hasOverlap));
                 lastOverlap = GetOverlapText(currentText.ToString());
 
                 currentText.Clear();
@@ -586,7 +590,7 @@ public class StructuralChunker
         if (currentText.Length > 0)
         {
             var chunkText = contextPrefix + currentText.ToString().Trim();
-            chunks.Add(CreateParagraphChunk(chunkText, section, page, chunkIndex++, hasOverlap));
+            chunks.Add(CreateParagraphChunk(chunkText, sectionPath, page, chunkIndex++, hasOverlap));
         }
 
         return chunks;
@@ -608,10 +612,9 @@ public class StructuralChunker
     /// <summary>
     /// Split text by token count when sentence splitting isn't possible.
     /// </summary>
-    private List<ChunkResult> SplitByCharacters(string text, string section, int? page, ref int chunkIndex)
+    private List<ChunkResult> SplitByCharacters(string text, string contextPrefix, string sectionPath, int? page, ref int chunkIndex)
     {
         var chunks = new List<ChunkResult>();
-        var contextPrefix = string.IsNullOrEmpty(section) ? "" : $"[Section: {section}] > ";
         var contextTokens = CountTokens(contextPrefix);
         var targetTokensPerChunk = TargetTokenMax - contextTokens;
 
@@ -645,7 +648,7 @@ public class StructuralChunker
             if (!string.IsNullOrEmpty(chunkText))
             {
                 var textWithContext = contextPrefix + chunkText;
-                chunks.Add(CreateParagraphChunk(textWithContext, section, page, chunkIndex++, hasOverlap));
+                chunks.Add(CreateParagraphChunk(textWithContext, sectionPath, page, chunkIndex++, hasOverlap));
             }
 
             position += chunkLength - overlapChars;
@@ -767,12 +770,12 @@ public class StructuralChunker
         /// <summary>
         /// Append block with context injection (section prefix).
         /// </summary>
-        public void AppendWithContext(StructuralBlock block, string sectionTitle)
+        public void AppendWithContext(StructuralBlock block, string contextPrefix, string sectionPath)
         {
             // Inject context at the beginning of the chunk
-            if (!_hasContext && !string.IsNullOrEmpty(sectionTitle))
+            if (!_hasContext && !string.IsNullOrEmpty(contextPrefix))
             {
-                _text.Append($"[Section: {sectionTitle}] > ");
+                _text.Append(contextPrefix);
                 _hasContext = true;
             }
 
