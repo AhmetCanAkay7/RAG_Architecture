@@ -872,6 +872,7 @@ public class StructuralChunker
         private int? _page;
         private bool _hasOverlap;
         private bool _hasContext;
+        private string? _initialSectionPath;  // Capture first section path for accurate citations
 
         public ChunkBuilder(Func<string, int> countTokens)
         {
@@ -886,6 +887,9 @@ public class StructuralChunker
         /// </summary>
         public void AppendWithContext(StructuralBlock block, string contextPrefix, string sectionPath)
         {
+            // Capture the FIRST section path for accurate citations
+            _initialSectionPath ??= sectionPath;
+
             // Inject context at the beginning of the chunk
             if (!_hasContext && !string.IsNullOrEmpty(contextPrefix))
             {
@@ -920,13 +924,14 @@ public class StructuralChunker
             _text.Append(text);
         }
 
-        public ChunkResult Build(int index, string sectionTitle)
+        public ChunkResult Build(int index, string currentSectionPath)
         {
             return new ChunkResult
             {
                 Index = index,
                 Text = _text.ToString().Trim(),
-                SectionTitle = sectionTitle,
+                // Use the FIRST section path (where chunk starts), not the current one (where chunk ends)
+                SectionTitle = _initialSectionPath ?? currentSectionPath,
                 Page = _page,
                 EstimatedTokens = TokenCount,
                 HasOverlap = _hasOverlap
