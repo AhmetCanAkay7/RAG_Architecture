@@ -66,6 +66,7 @@ builder.Services.AddScoped<IRagService, RagService>();
 builder.Services.AddScoped<TextCleaner>();
 builder.Services.AddScoped<PdfTextExtractor>();
 builder.Services.AddScoped<TxtTextExtractor>();
+builder.Services.AddScoped<DocxTextExtractor>();
 builder.Services.AddScoped<StructuralChunker>();
 builder.Services.AddScoped<DocumentMetadataBuilder>();
 builder.Services.AddHttpClient<IVersionManager, VersionManager>();

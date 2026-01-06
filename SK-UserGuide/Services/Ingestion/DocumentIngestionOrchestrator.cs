@@ -13,6 +13,7 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
 {
     private readonly PdfTextExtractor _pdfExtractor;
     private readonly TxtTextExtractor _txtExtractor;
+    private readonly DocxTextExtractor _docxExtractor;
     private readonly TextCleaner _textCleaner;
     private readonly StructuralChunker _chunker;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
@@ -24,6 +25,7 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
     public DocumentIngestionOrchestrator(
         PdfTextExtractor pdfExtractor,
         TxtTextExtractor txtExtractor,
+        DocxTextExtractor docxExtractor,
         TextCleaner textCleaner,
         StructuralChunker chunker,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
@@ -34,6 +36,7 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
     {
         _pdfExtractor = pdfExtractor;
         _txtExtractor = txtExtractor;
+        _docxExtractor = docxExtractor;
         _textCleaner = textCleaner;
         _chunker = chunker;
         _embeddingGenerator = embeddingGenerator;
@@ -55,7 +58,12 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
             // 1. Dosya bilgileri
             var fileName = file.FileName;
             var extension = Path.GetExtension(fileName).ToLower();
-            var sourceType = extension == ".pdf" ? "pdf" : "txt";
+            var sourceType = extension switch
+            {
+                ".pdf" => "pdf",
+                ".docx" => "docx",
+                _ => "txt"
+            };
             var docId = _metadataBuilder.GenerateStableDocId(fileName);
 
             _logger.LogInformation("Starting ingestion for {FileName}, DocId: {DocId}", fileName, docId);
@@ -64,22 +72,14 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
             ExtractedDocument extractedDoc;
             using (var stream = file.OpenReadStream())
             {
-                if (extension == ".pdf")
+                extractedDoc = extension switch
                 {
-                    extractedDoc = _pdfExtractor.Extract(stream, fileName);
-                }
-                else if (extension == ".txt")
-                {
-                    extractedDoc = _txtExtractor.Extract(stream, fileName);
-                }
-                else
-                {
-                    return new IngestionResult
-                    {
-                        Success = false,
-                        Message = $"Desteklenmeyen dosya formatı: {extension}. Sadece .pdf ve .txt desteklenir."
-                    };
-                }
+                    ".pdf" => _pdfExtractor.Extract(stream, fileName),
+                    ".docx" => _docxExtractor.Extract(stream, fileName),
+                    ".txt" => _txtExtractor.Extract(stream, fileName),
+                    _ => throw new NotSupportedException(
+                        $"Desteklenmeyen dosya formatı: {extension}. Desteklenen formatlar: .pdf, .docx, .txt")
+                };
             }
 
             _logger.LogInformation("Extracted {PageCount} pages from {FileName}",
