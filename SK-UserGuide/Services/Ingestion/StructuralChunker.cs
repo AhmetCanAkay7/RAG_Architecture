@@ -20,7 +20,7 @@ public class StructuralChunker
     private const int TargetTokenMin = 150;
     private const int TargetTokenMax = 350;
     private const int OverlapTokens = 50;
-    private const int MinChunkTokens = 30;
+    private const int MinChunkTokens = 100;
 
     // Table tolerance: allow 50% overflow to keep tables atomic
     private const double TableTokenTolerance = 1.5;
@@ -52,6 +52,7 @@ public class StructuralChunker
 
     /// <summary>
     /// Chunk a document into semantically meaningful pieces.
+    /// Updated with: heading lookahead, StepList merge capability.
     /// </summary>
     public List<ChunkResult> Chunk(ExtractedDocument document)
     {
@@ -70,28 +71,62 @@ public class StructuralChunker
         _contextBuilder.Reset(); // Reset for new document
         int chunkIndex = 0;
 
-        foreach (var block in blocks)
+        for (int i = 0; i < blocks.Count; i++)
         {
+            var block = blocks[i];
+
             // Skip empty blocks
             if (block.Type == BlockType.Empty || string.IsNullOrWhiteSpace(block.Text))
                 continue;
 
-            // === HEADING BLOCK ===
-            // STRICT SEPARATION: Always finalize current chunk and start new section
+            // === HEADING BLOCK WITH LOOKAHEAD ===
             if (block.Type == BlockType.Heading)
             {
-                // Always finalize current chunk if it has content (no matter how short)
-                if (currentChunk.HasContent)
+                // Find next non-empty content block
+                StructuralBlock? nextContentBlock = null;
+                for (int j = i + 1; j < blocks.Count; j++)
                 {
-                    chunks.Add(currentChunk.Build(chunkIndex++, _contextBuilder.GetFullSectionPath()));
-                    currentChunk = new ChunkBuilder(CountTokens);
+                    if (blocks[j].Type != BlockType.Empty && !string.IsNullOrWhiteSpace(blocks[j].Text))
+                    {
+                        nextContentBlock = blocks[j];
+                        break;
+                    }
                 }
 
-                // Update hierarchical context with new heading
-                _contextBuilder.ProcessHeading(block.Text);
+                // Calculate lookahead tokens
+                int lookaheadTokens;
+                if (nextContentBlock != null && nextContentBlock.Type != BlockType.Table)
+                {
+                    lookaheadTokens = CountTokens(block.Text + "\n\n" + nextContentBlock.Text);
+                }
+                else
+                {
+                    // End of doc or next is table - just count heading
+                    lookaheadTokens = CountTokens(block.Text);
+                }
 
-                // Start new section with hierarchical context prefix
-                currentChunk.AppendWithContext(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath());
+                // Check if heading + next content fits in current chunk
+                if (currentChunk.HasContent &&
+                    (currentChunk.TokenCount + lookaheadTokens) <= TargetTokenMax)
+                {
+                    // DO NOT close current chunk - append heading to it
+                    currentChunk.AppendRawText("\n\n" + block.Text);
+                    // Update breadcrumb for future blocks (but don't change current chunk's initial metadata)
+                    _contextBuilder.ProcessHeading(block.Text);
+                }
+                else
+                {
+                    // Close current chunk if it has content
+                    if (currentChunk.HasContent)
+                    {
+                        chunks.Add(currentChunk.Build(chunkIndex++, _contextBuilder.GetFullSectionPath()));
+                        currentChunk = new ChunkBuilder(CountTokens);
+                    }
+
+                    // Update breadcrumb and start new chunk with heading
+                    _contextBuilder.ProcessHeading(block.Text);
+                    currentChunk.AppendWithContext(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath());
+                }
                 continue;
             }
 
@@ -122,18 +157,39 @@ public class StructuralChunker
                 continue;
             }
 
-            // === STEP LIST BLOCK ===
-            // Keep related steps together
+            // === STEP LIST BLOCK WITH MERGE CAPABILITY ===
             if (block.Type == BlockType.StepList)
             {
-                if (currentChunk.HasContent)
-                {
-                    chunks.Add(currentChunk.Build(chunkIndex++, _contextBuilder.GetFullSectionPath()));
-                    currentChunk = new ChunkBuilder(CountTokens);
-                }
+                var listTokens = CountTokens(block.Text);
 
-                var stepChunks = ChunkStepList(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath(), ref chunkIndex);
-                chunks.AddRange(stepChunks);
+                // Try to fit list into current chunk
+                if (currentChunk.HasContent && (currentChunk.TokenCount + listTokens) <= TargetTokenMax)
+                {
+                    // Append list to current chunk (keep intact)
+                    currentChunk.AppendRawText("\n\n" + block.Text);
+                }
+                else
+                {
+                    // Close current chunk if has content
+                    if (currentChunk.HasContent)
+                    {
+                        chunks.Add(currentChunk.Build(chunkIndex++, _contextBuilder.GetFullSectionPath()));
+                        currentChunk = new ChunkBuilder(CountTokens);
+                    }
+
+                    // Check if list fits in single chunk
+                    if (listTokens <= TargetTokenMax)
+                    {
+                        // Start new chunk with the list
+                        currentChunk.AppendWithContext(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath());
+                    }
+                    else
+                    {
+                        // List too large - split by items
+                        var stepChunks = ChunkStepList(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath(), ref chunkIndex);
+                        chunks.AddRange(stepChunks);
+                    }
+                }
                 continue;
             }
 
@@ -188,7 +244,7 @@ public class StructuralChunker
             chunks.Add(currentChunk.Build(chunkIndex, _contextBuilder.GetFullSectionPath()));
         }
 
-        // Merge very short chunks (but not across section boundaries)
+        // Merge very short chunks with cross-section support
         chunks = MergeShortChunks(chunks);
 
         return chunks;
@@ -709,7 +765,8 @@ public class StructuralChunker
     }
 
     /// <summary>
-    /// Merge chunks that are too short (but respect section boundaries).
+    /// Merge chunks that are too short with cross-section support.
+    /// Cross-section merge allowed if chunks share the same parent path.
     /// </summary>
     private List<ChunkResult> MergeShortChunks(List<ChunkResult> chunks)
     {
@@ -722,21 +779,42 @@ public class StructuralChunker
             var chunk = chunks[i];
             var tokens = chunk.EstimatedTokens;
 
-            // Only merge if same section and very short
-            if (tokens < MinChunkTokens && result.Any() &&
-                result[^1].SectionTitle == chunk.SectionTitle)
+            // Check if chunk is too short and should be merged
+            if (tokens < MinChunkTokens && result.Any())
             {
                 var prev = result[^1];
-                result[^1] = prev with
+                var mergedTokens = prev.EstimatedTokens + tokens;
+
+                // Try to merge into previous chunk if it fits
+                if (mergedTokens <= TargetTokenMax && CanMergeChunks(prev, chunk))
                 {
-                    Text = prev.Text + "\n\n" + chunk.Text,
-                    EstimatedTokens = prev.EstimatedTokens + tokens
-                };
+                    result[^1] = prev with
+                    {
+                        Text = prev.Text + "\n\n" + chunk.Text,
+                        EstimatedTokens = mergedTokens
+                    };
+                    continue;
+                }
             }
-            else
+
+            // If we just added a short chunk, check if we should merge with next
+            if (result.Any() && result[^1].EstimatedTokens < MinChunkTokens)
             {
-                result.Add(chunk);
+                var prev = result[^1];
+                var mergedTokens = prev.EstimatedTokens + tokens;
+
+                if (mergedTokens <= TargetTokenMax && CanMergeChunks(prev, chunk))
+                {
+                    result[^1] = prev with
+                    {
+                        Text = prev.Text + "\n\n" + chunk.Text,
+                        EstimatedTokens = mergedTokens
+                    };
+                    continue;
+                }
             }
+
+            result.Add(chunk);
         }
 
         // Renumber indices
@@ -746,6 +824,42 @@ public class StructuralChunker
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Check if two chunks can be merged (same section or same parent path).
+    /// </summary>
+    private bool CanMergeChunks(ChunkResult a, ChunkResult b)
+    {
+        // Same section - always mergeable
+        if (a.SectionTitle == b.SectionTitle)
+            return true;
+
+        // Cross-section merge: check if they share the same parent path
+        var parentA = GetParentPath(a.SectionTitle);
+        var parentB = GetParentPath(b.SectionTitle);
+
+        // If both have parents and parents match, allow merge
+        if (!string.IsNullOrEmpty(parentA) && parentA == parentB)
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Get parent path from section title (remove last segment).
+    /// Example: "Doc > Section A > Subsection" -> "Doc > Section A"
+    /// </summary>
+    private string GetParentPath(string? sectionTitle)
+    {
+        if (string.IsNullOrEmpty(sectionTitle))
+            return string.Empty;
+
+        var lastSeparator = sectionTitle.LastIndexOf(" > ");
+        if (lastSeparator > 0)
+            return sectionTitle[..lastSeparator];
+
+        return string.Empty;
     }
 
     /// <summary>
@@ -796,6 +910,14 @@ public class StructuralChunker
                 _text.AppendLine();
                 _hasOverlap = true;
             }
+        }
+
+        /// <summary>
+        /// Append raw text without context injection (for merging headings/lists into existing chunk).
+        /// </summary>
+        public void AppendRawText(string text)
+        {
+            _text.Append(text);
         }
 
         public ChunkResult Build(int index, string sectionTitle)

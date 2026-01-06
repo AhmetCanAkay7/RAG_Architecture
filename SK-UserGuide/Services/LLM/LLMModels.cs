@@ -107,11 +107,14 @@ public record RagResponse
         if (Citations.Count > 0)
         {
             sb.AppendLine();
+            sb.AppendLine();
+            sb.AppendLine("---");
+            sb.AppendLine();
             sb.AppendLine(ResponseLanguage == "TR" ? "📚 **Kaynaklar:**" : "📚 **Sources:**");
             sb.AppendLine();
             foreach (var cite in Citations)
             {
-                sb.AppendLine($"- {cite}");  // Markdown list format
+                sb.AppendLine($"- {cite}");
             }
         }
 
