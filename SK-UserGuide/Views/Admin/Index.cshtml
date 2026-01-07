@@ -17,7 +17,7 @@
                 </div>
                 <div class="card-body">
                     <p class="text-muted mb-4">
-                        Upload your files in PDF or TXT format. The system automatically extracts text,
+                        Upload your files in PDF, DOCX or TXT format. The system automatically extracts text,
                         converts to embeddings, and prepares for search.
                     </p>
 
@@ -30,7 +30,7 @@
                             <label for="fileInput" class="btn btn-primary btn-lg">
                                 <i class="bi bi-folder-open me-2"></i>Select File
                             </label>
-                            <input type="file" id="fileInput" name="file" accept=".txt,.pdf" class="d-none" required>
+                            <input type="file" id="fileInput" name="file" accept=".txt,.pdf,.docx" class="d-none" required>
                         </div>
 
                         <div class="selected-file mb-3" id="selectedFile" style="display: none;">
@@ -200,14 +200,14 @@
             if (files.length > 0) {
                 const file = files[0];
                 const ext = file.name.toLowerCase();
-                if (ext.endsWith('.txt') || ext.endsWith('.pdf')) {
+                if (ext.endsWith('.txt') || ext.endsWith('.pdf') || ext.endsWith('.docx')) {
                     // DataTransfer API kullanarak dosyayı input'a ata
                     const dataTransfer = new DataTransfer();
                     dataTransfer.items.add(file);
                     fileInput.files = dataTransfer.files;
                     showSelectedFile(file);
                 } else {
-                    alert('Only .txt and .pdf files are supported.');
+                    alert('Only .txt, .pdf and .docx files are supported.');
                 }
             }
         });
@@ -253,7 +253,7 @@
                 const response = await fetch('@Url.Action("DeleteDocument", "Admin")', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `docId=${encodeURIComponent(pendingDeleteDocId)}`
+                    body: `docId=${encodeURIComponent(pendingDeleteDocId)}``
                 });
 
                 const result = await response.json();

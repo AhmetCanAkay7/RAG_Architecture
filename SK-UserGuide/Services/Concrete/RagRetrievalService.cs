@@ -86,8 +86,13 @@ public class RagRetrievalService : IRagRetrievalService
             {
                 ExtensionData = new Dictionary<string, object>
                 {
-                    ["max_tokens"] = 256,
-                    ["temperature"] = 0.3
+                    ["max_tokens"] = 1024,           
+                    ["temperature"] = 0.4,           
+                    ["top_p"] = 0.9,                 
+                    ["top_k"] = 50,                  // Limit vocabulary
+
+                    ["frequency_penalty"] = 0.4,     // Reduce repetition
+                    ["presence_penalty"] = 0.1,
                 }
             };
 

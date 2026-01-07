@@ -101,40 +101,128 @@ public class HybridRetrievalService : IHybridRetrievalService
 
         try
         {
-            // Build filter conditions for keyword matching
-            var shouldConditions = keywords.Select(kw => new
+            Console.WriteLine($"[Sparse Search] Keywords: {string.Join(", ", keywords)}");
+
+            var allMatches = new List<(ulong Id, float Score, Dictionary<string, JsonElement>? Payload)>();
+            var seenIds = new HashSet<ulong>();
+
+            // Normalize keywords for case-insensitive matching
+            var normalizedKeywords = keywords
+                .Select(kw => kw.ToLowerInvariant().Trim())
+                .Where(kw => kw.Length >= 2) // Minimum 2 characters
+                .Distinct()
+                .ToList();
+
+            if (normalizedKeywords.Count == 0)
             {
-                key = "text",
-                match = new { text = kw }
-            }).ToArray();
-
-            var scrollRequest = new
-            {
-                filter = new { should = shouldConditions },
-                limit = SparseCandidateLimit,
-                with_payload = true
-            };
-
-            var response = await _httpClient.PostAsJsonAsync(
-                $"/collections/{_settings.Collection}/points/scroll",
-                scrollRequest,
-                _jsonOptions);
-
-            if (!response.IsSuccessStatusCode)
+                Console.WriteLine("[Sparse Search] No valid keywords after normalization");
                 return new List<QdrantRestClient.SearchResult>();
+            }
 
-            var result = await response.Content.ReadFromJsonAsync<ScrollResponse>(_jsonOptions);
+            Console.WriteLine($"[Sparse Search] Normalized keywords: {string.Join(", ", normalizedKeywords)}");
 
-            // Convert scroll results to search results format
-            return result?.Result?.Points?.Select((p, idx) => new QdrantRestClient.SearchResult
+            // Scroll through collection to get candidates
+            // We need to fetch enough candidates to find keyword matches
+            string? offset = null;
+            int fetchedCount = 0;
+            const int scrollBatchSize = 50;
+            const int maxFetchLimit = 200; // Safety limit to avoid fetching entire collection
+
+            do
             {
-                Id = p.Id,
-                Score = 1.0f / (idx + 1), // Rank-based pseudo score
-                Payload = p.Payload
-            }).ToList() ?? new List<QdrantRestClient.SearchResult>();
+                object scrollRequest = offset == null
+                    ? new { limit = scrollBatchSize, with_payload = true, with_vector = false }
+                    : new { limit = scrollBatchSize, with_payload = true, with_vector = false, offset = offset };
+
+                var response = await _httpClient.PostAsJsonAsync(
+                    $"/collections/{_settings.Collection}/points/scroll",
+                    scrollRequest,
+                    _jsonOptions);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    Console.WriteLine($"[Sparse Search] Scroll failed: {response.StatusCode} - {errorContent}");
+                    break;
+                }
+
+                var result = await response.Content.ReadFromJsonAsync<ScrollResponse>(_jsonOptions);
+
+                if (result?.Result?.Points == null || result.Result.Points.Count == 0)
+                    break;
+
+                fetchedCount += result.Result.Points.Count;
+                Console.WriteLine($"[Sparse Search] Fetched {result.Result.Points.Count} points (total: {fetchedCount})");
+
+                // Client-side keyword matching (case-insensitive substring search)
+                foreach (var point in result.Result.Points)
+                {
+                    if (seenIds.Contains(point.Id))
+                        continue;
+
+                    var text = GetPayloadString(point.Payload, "text");
+                    if (string.IsNullOrWhiteSpace(text))
+                        continue;
+
+                    var normalizedText = text.ToLowerInvariant();
+
+                    // Count how many keywords appear in the text (substring match)
+                    int matchCount = 0;
+                    var matchedKeywords = new List<string>();
+
+                    foreach (var keyword in normalizedKeywords)
+                    {
+                        if (normalizedText.Contains(keyword))
+                        {
+                            matchCount++;
+                            matchedKeywords.Add(keyword);
+                        }
+                    }
+
+                    if (matchCount > 0)
+                    {
+                        seenIds.Add(point.Id);
+
+                        // Score: percentage of keywords matched + boost for multiple matches
+                        var score = (float)matchCount / normalizedKeywords.Count;
+
+                        allMatches.Add((point.Id, score, point.Payload));
+
+                        Console.WriteLine($"[Sparse Search] Match found - ID: {point.Id}, Score: {score:F3}, Keywords: {string.Join(", ", matchedKeywords)}");
+                    }
+                }
+
+                // Stop if we have enough matches or reached fetch limit
+                if (allMatches.Count >= SparseCandidateLimit || fetchedCount >= maxFetchLimit)
+                    break;
+
+                offset = result.Result.NextPageOffset;
+
+            } while (offset != null);
+
+            Console.WriteLine($"[Sparse Search] Total matches: {allMatches.Count} from {fetchedCount} candidates");
+
+            // Sort by score (most keyword matches first) and limit results
+            var topMatches = allMatches
+                .OrderByDescending(m => m.Score)
+                .ThenBy(m => m.Id) // Stable sort for deterministic results
+                .Take(SparseCandidateLimit)
+                .Select((m, idx) => new QdrantRestClient.SearchResult
+                {
+                    Id = m.Id,
+                    Score = m.Score,
+                    Payload = m.Payload
+                })
+                .ToList();
+
+            Console.WriteLine($"[Sparse Search] Returning top {topMatches.Count} matches");
+
+            return topMatches;
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"[Sparse Search] Exception: {ex.Message}");
+            Console.WriteLine($"[Sparse Search] Stack trace: {ex.StackTrace}");
             return new List<QdrantRestClient.SearchResult>();
         }
     }
@@ -356,6 +444,9 @@ public class HybridRetrievalService : IHybridRetrievalService
     {
         [JsonPropertyName("points")]
         public List<ScrollPoint>? Points { get; set; }
+
+        [JsonPropertyName("next_page_offset")]
+        public string? NextPageOffset { get; set; }
     }
 
     private class ScrollPoint
