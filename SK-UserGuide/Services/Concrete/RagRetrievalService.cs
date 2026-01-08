@@ -86,11 +86,12 @@ public class RagRetrievalService : IRagRetrievalService
             {
                 ExtensionData = new Dictionary<string, object>
                 {
-                    ["max_tokens"] = 512,           
-                    ["temperature"] = 0.2,           
-                    ["top_p"] = 0.85,                 
-                    ["top_k"] = 50               // Limit vocabulary
-
+                    ["max_tokens"] = 512,
+                    ["temperature"] = 0.2,
+                    ["top_p"] = 0.85,
+                    ["top_k"] = 50,
+                    ["num_thread"] = 8,          // CPU thread count for parallel inference
+                    ["stop"] = new[] { "\n\n", "QUESTION:", "CONTEXT:" }  // Stop sequences
                 }
             };
 
