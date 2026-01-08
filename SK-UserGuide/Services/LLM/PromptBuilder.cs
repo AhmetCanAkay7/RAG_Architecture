@@ -27,7 +27,7 @@ public class PromptBuilder
         var sb = new StringBuilder();
 
         sb.AppendLine(SystemPrompt);
-        sb.AppendLine();
+        sb.AppendLine("\n\n");
 
         // Include conversation history if available
         if (!string.IsNullOrEmpty(conversationHistory))
@@ -39,7 +39,7 @@ public class PromptBuilder
 
         sb.AppendLine("CONTEXT:");
         sb.AppendLine(formattedContext);
-        sb.AppendLine();
+        sb.AppendLine();    
         sb.AppendLine($"QUESTION: {question}");
         sb.AppendLine();
         sb.Append("ANSWER:");

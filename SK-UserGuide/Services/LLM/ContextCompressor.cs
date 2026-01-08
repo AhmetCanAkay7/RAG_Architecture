@@ -9,7 +9,7 @@ namespace SK_UserGuide.Services.LLM;
 /// </summary>
 public class ContextCompressor
 {
-    private const int TargetTokenBudget = 800;
+    private const int TargetTokenBudget = 600;
     private const int MaxSentencesPerChunk = 5;
     private const int MinSentenceLength = 15;
 

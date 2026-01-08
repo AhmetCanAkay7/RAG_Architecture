@@ -172,7 +172,7 @@ public static class KeywordExtractor
             "total", "cost", "ownership", "unit", "quality", "defect",
             "customer", "satisfaction", "delivery", "performance", "risk",
             "score", "mitigation", "water", "usage", "efficiency", "moving",
-            "average", "exponential", "smoothing", "acceptable", "level"
+            "average", "exponential", "smoothing", "acceptable", "level","interact"
         };
 
         // At least one word should be a domain keyword
