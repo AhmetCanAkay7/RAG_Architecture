@@ -253,7 +253,7 @@
                 const response = await fetch('@Url.Action("DeleteDocument", "Admin")', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `docId=${encodeURIComponent(pendingDeleteDocId)}``
+                    body: `docId=${encodeURIComponent(pendingDeleteDocId)}`
                 });
 
                 const result = await response.json();

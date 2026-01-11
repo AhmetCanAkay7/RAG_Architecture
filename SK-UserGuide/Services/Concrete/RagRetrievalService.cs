@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
+using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.LLM;
 using SK_UserGuide.Services.Retrieval;
@@ -6,7 +8,7 @@ using SK_UserGuide.Services.Retrieval;
 namespace SK_UserGuide.Services.Concrete;
 
 /// <summary>
-/// RAG retrieval service with context compression and structured responses.
+/// RAG retrieval service with configurable response modes.
 /// </summary>
 public class RagRetrievalService : IRagRetrievalService
 {
@@ -16,10 +18,14 @@ public class RagRetrievalService : IRagRetrievalService
     private readonly PromptBuilder _promptBuilder;
     private readonly ResponseFormatter _responseFormatter;
     private readonly QueryTranslator _queryTranslator;
+    private readonly string _responseMode;
 
+    // System prompts
+    private const string ChatSystemPrompt = "You are a friendly assistant. Respond briefly and naturally in the same language as the user.";
     public RagRetrievalService(
         IHybridRetrievalService hybridRetrieval,
         Kernel kernel,
+        IOptions<RagSettings> ragSettings,
         QueryTranslator? queryTranslator = null)
     {
         _hybridRetrieval = hybridRetrieval;
@@ -28,41 +34,85 @@ public class RagRetrievalService : IRagRetrievalService
         _promptBuilder = new PromptBuilder();
         _responseFormatter = new ResponseFormatter();
         _queryTranslator = queryTranslator ?? new QueryTranslator(kernel, enabled: false);
+        _responseMode = ragSettings.Value.ResponseMode;
     }
 
     /// <summary>
-    /// Process a question with RAG pipeline.
+    /// Process a question with configurable response mode.
     /// </summary>
     public async Task<string> AskAsync(string question)
     {
         // 1. Optionally translate query to English
-        var translationResult = await _queryTranslator.TranslateIfNeededAsync(question);
-        var processedQuestion = translationResult.Query;
+        string processedQuestion = await TranslateAsync(question);
 
-        // 2. Hybrid retrieval
+        // 2. Try to get context
         var retrievalResult = await _hybridRetrieval.RetrieveAsync(processedQuestion);
 
+        // 3. No context found → Chat mode (LLM sohbet)
         if (retrievalResult.ChunkCount == 0)
         {
-            var noResult = _responseFormatter.CreateNoResultsResponse("EN");
-            return noResult.ToDisplayString();
+            return await HandleChatAsync(processedQuestion);
         }
 
-        // 3. Context compression (extractive, no LLM)
+        // 4. Context found → Check response mode
+        if (_responseMode == "ContextOnly")
+        {
+            return HandleContextOnly(retrievalResult);
+        }
+        else // Hybrid
+        {
+            return await HandleHybridAsync(processedQuestion, retrievalResult);
+        }
+    }
+
+    /// <summary>
+    /// Chat mode: Direct LLM response without context (for greetings, general conversation).
+    /// </summary>
+    private async Task<string> HandleChatAsync(string question)
+    {
+        var prompt = $"{ChatSystemPrompt}\n\nUser: {question}\nAssistant:";
+        return await CallLLMAsync(prompt);
+    }
+
+    /// <summary>
+    /// ContextOnly mode: Return compressed context directly (fastest).
+    /// </summary>
+    private string HandleContextOnly(RetrievalResult retrievalResult)
+    {
         var compressedContext = _compressor.Compress(
             retrievalResult.SelectedChunks,
-            processedQuestion,
+            "",
             "EN");
 
-        // 4. Build prompt
-        var prompt = _promptBuilder.Build(
-            processedQuestion,
-            compressedContext);
+        // Combine all context items as the "answer"
+        var combinedText = string.Join("\n\n", compressedContext.Items.Select(i => i.Text));
 
-        // 5. Call LLM
+        var response = _responseFormatter.Format(
+            combinedText,
+            compressedContext,
+            "EN");
+
+        return response.ToDisplayString();
+    }
+
+    /// <summary>
+    /// Hybrid mode: Context + LLM processing (current behavior).
+    /// </summary>
+    private async Task<string> HandleHybridAsync(string question, RetrievalResult retrievalResult)
+    {
+        // Context compression
+        var compressedContext = _compressor.Compress(
+            retrievalResult.SelectedChunks,
+            question,
+            "EN");
+
+        // Build prompt with RAG system prompt
+        var prompt = _promptBuilder.Build(question, compressedContext);
+
+        // Call LLM
         var rawAnswer = await CallLLMAsync(prompt);
 
-        // 6. Format response
+        // Format response
         var response = _responseFormatter.Format(
             rawAnswer,
             compressedContext,
@@ -72,16 +122,14 @@ public class RagRetrievalService : IRagRetrievalService
     }
 
     /// <summary>
-    /// Call LLM with the built prompt.
+    /// Call LLM with the given prompt.
     /// </summary>
     private async Task<string> CallLLMAsync(string prompt)
     {
-        // 5 minute timeout - Ollama may need time to load model into memory
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
 
         try
         {
-            // Limit response length for faster generation on CPU
             var settings = new PromptExecutionSettings
             {
                 ExtensionData = new Dictionary<string, object>
@@ -89,9 +137,8 @@ public class RagRetrievalService : IRagRetrievalService
                     ["max_tokens"] = 512,
                     ["temperature"] = 0.2,
                     ["top_p"] = 0.85,
-                    ["top_k"] = 50,
-                    ["num_thread"] = 8,          // CPU thread count for parallel inference
-                    ["stop"] = new[] { "\n\n", "QUESTION:", "CONTEXT:" }  // Stop sequences
+                    ["num_thread"] = 8,
+                    ["stop"] = new[] { "\n\n", "QUESTION:", "CONTEXT:" }
                 }
             };
 
@@ -100,7 +147,13 @@ public class RagRetrievalService : IRagRetrievalService
         }
         catch (OperationCanceledException)
         {
-            return "LLM response timed out. Please try a shorter question or try again later.";
+            return "LLM response timed out. Please try again.";
         }
+    }
+
+    private async Task<string> TranslateAsync(string question)
+    {
+        var translationResult = await _queryTranslator.TranslateIfNeededAsync(question);
+        return translationResult.Query;
     }
 }

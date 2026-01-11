@@ -23,6 +23,7 @@ Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 // 1. Configuration binding
 builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<QdrantSettings>(builder.Configuration.GetSection("Qdrant"));
+builder.Services.Configure<RagSettings>(builder.Configuration.GetSection("Rag"));
 
 // 2. Qdrant REST Client (HTTP/1.1 - port 6333, bypasses HTTP/2 proxy issues)
 builder.Services.AddHttpClient<QdrantRestClient>();
