@@ -57,7 +57,7 @@ public class RagRetrievalService : IRagRetrievalService
         // 4. Context found → Check response mode
         if (_responseMode == "ContextOnly")
         {
-            return HandleContextOnly(retrievalResult);
+            return HandleContextOnly(processedQuestion,retrievalResult);
         }
         else // Hybrid
         {
@@ -77,11 +77,11 @@ public class RagRetrievalService : IRagRetrievalService
     /// <summary>
     /// ContextOnly mode: Return compressed context directly (fastest).
     /// </summary>
-    private string HandleContextOnly(RetrievalResult retrievalResult)
+    private string HandleContextOnly(string question, RetrievalResult retrievalResult)
     {
         var compressedContext = _compressor.Compress(
             retrievalResult.SelectedChunks,
-            "",
+            question,
             "EN");
 
         // Combine all context items as the "answer"
