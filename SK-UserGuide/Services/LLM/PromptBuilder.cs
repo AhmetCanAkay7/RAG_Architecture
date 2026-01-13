@@ -8,7 +8,7 @@ namespace SK_UserGuide.Services.LLM;
 public class PromptBuilder
 {
     // Simplified English prompt for optimal LLM performance
-    private const string SystemPrompt = @"You are an enterprise knowledge assistant. Use ONLY the provided context. Cite sources: [1], [2]. Respond concisely.";
+    private const string SystemPrompt = @"Use only the context below.";
 
     /// <summary>
     /// Build the complete prompt for LLM.
@@ -16,7 +16,7 @@ public class PromptBuilder
     public string Build(string question, CompressedContext context)
     {
         return BuildWithHistory(question, context, null);
-    }
+    }   
 
     /// <summary>
     /// Build the complete prompt for LLM with optional chat history.

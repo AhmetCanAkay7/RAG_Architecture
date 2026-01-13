@@ -27,9 +27,7 @@ public class CompressedContext
 {
     public List<ContextItem> Items { get; set; } = new();
 
-    /// <summary>
-    /// Total estimated tokens.
-    /// </summary>
+    public string Summary { get; set; } = string.Empty;
     public int EstimatedTokens => Items.Sum(i => i.EstimatedTokens);
 
     /// <summary>

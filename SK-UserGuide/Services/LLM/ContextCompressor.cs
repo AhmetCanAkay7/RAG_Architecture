@@ -9,7 +9,7 @@ namespace SK_UserGuide.Services.LLM;
 /// </summary>
 public class ContextCompressor
 {
-    private const int TargetTokenBudget = 600;
+    private const int TargetTokenBudget = 400;
     private const int MaxSentencesPerChunk = 5;
     private const int MinSentenceLength = 15;
 
@@ -61,10 +61,39 @@ public class ContextCompressor
         // 4. Merge consecutive chunks from same section
         result.Items = MergeConsecutiveChunks(result.Items);
 
+        result.Summary = GenerateSummary(result.Items, questionKeywords);
+
         return result;
     }
 
+    private string GenerateSummary(List<ContextItem> items, HashSet<string> questionKeywords)
+    {
+        if (items.Count == 0)
+            return "No relevant information found.";
 
+        var allSentences = new List<(string Sentence, double Score, int Index)>();
+
+        // Score all sentences
+        for (int i = 0; i < items.Count; i++)
+        {
+            var sentences = SplitToSentences(items[i].Text);
+            foreach (var sentence in sentences)
+            {
+                var score = CalculateKeywordOverlap(sentence, questionKeywords);
+                allSentences.Add((sentence, score, i + 1));
+            }
+        }
+
+        // Take top 3 sentences
+        var topSentences = allSentences
+            .OrderByDescending(x => x.Score)
+            .Take(3)
+            .OrderBy(x => x.Index)
+            .Select(x => $"{x.Sentence} [{x.Index}]")
+            .ToList();
+
+        return string.Join(" ", topSentences);
+    }
 
     private List<string> SplitToSentences(string text)
     {

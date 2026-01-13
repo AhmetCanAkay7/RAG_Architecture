@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
+using OpenAI.Assistants;
 using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.LLM;
@@ -21,7 +22,8 @@ public class RagRetrievalService : IRagRetrievalService
     private readonly string _responseMode;
 
     // System prompts
-    private const string ChatSystemPrompt = "You are a friendly assistant. Respond briefly and naturally in the same language as the user.";
+    private const string ChatSystemPrompt = "You are a helpful assistant.Respond briefly in English.";
+    
     public RagRetrievalService(
         IHybridRetrievalService hybridRetrieval,
         Kernel kernel,
@@ -84,11 +86,8 @@ public class RagRetrievalService : IRagRetrievalService
             question,
             "EN");
 
-        // Combine all context items as the "answer"
-        var combinedText = string.Join("\n\n", compressedContext.Items.Select(i => i.Text));
-
         var response = _responseFormatter.Format(
-            combinedText,
+            compressedContext.Summary,
             compressedContext,
             "EN");
 
@@ -137,8 +136,7 @@ public class RagRetrievalService : IRagRetrievalService
                     ["max_tokens"] = 512,
                     ["temperature"] = 0.2,
                     ["top_p"] = 0.85,
-                    ["num_thread"] = 8,
-                    ["stop"] = new[] { "\n\n", "QUESTION:", "CONTEXT:" }
+                    ["num_thread"] = Environment.ProcessorCount
                 }
             };
 
