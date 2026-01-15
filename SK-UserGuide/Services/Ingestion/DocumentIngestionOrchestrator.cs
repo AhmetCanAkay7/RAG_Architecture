@@ -55,7 +55,7 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
 
         try
         {
-            // 1. Dosya bilgileri
+            // 1. File informations
             var fileName = file.FileName;
             var extension = Path.GetExtension(fileName).ToLower();
             var sourceType = extension switch

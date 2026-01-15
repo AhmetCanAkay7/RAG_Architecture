@@ -22,9 +22,6 @@ namespace SK_UserGuide.Controllers
             return await LoadIndexViewAsync();
         }
 
-        /// <summary>
-        /// Upload endpoint using the improved ingestion pipeline.
-        /// </summary>
         [HttpPost]
         public async Task<IActionResult> Upload(IFormFile file)
         {
@@ -34,13 +31,11 @@ namespace SK_UserGuide.Controllers
                 return RedirectToAction("Index");
             }
 
-            // Use new ingestion pipeline
             var result = await _ingestionOrchestrator.IngestAsync(file);
 
             if (result.Success)
             {
                 // TempData ile mesajları taşı (PRG pattern)
-                // Not: TempData sadece string, int, bool serialize edebilir
                 TempData["Message"] = result.Message;
                 TempData["Success"] = "true";
                 TempData["ChunkCount"] = result.ChunkCount.ToString();
@@ -56,9 +51,6 @@ namespace SK_UserGuide.Controllers
             return RedirectToAction("Index");
         }
 
-        /// <summary>
-        /// Helper method to load the Index view with documents.
-        /// </summary>
         private async Task<IActionResult> LoadIndexViewAsync()
         {
             try

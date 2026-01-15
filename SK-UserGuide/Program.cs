@@ -4,8 +4,8 @@ using Microsoft.SemanticKernel;
 using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.Concrete;
-using SK_UserGuide.Services.Ingestion;
-using SK_UserGuide.Services.Retrieval;
+using SK_UserGuide.Services.Ingestion; // Document processing
+using SK_UserGuide.Services.Retrieval; // chunk search
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,14 +25,12 @@ builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Oll
 builder.Services.Configure<QdrantSettings>(builder.Configuration.GetSection("Qdrant"));
 builder.Services.Configure<RagSettings>(builder.Configuration.GetSection("Rag"));
 
-// 2. Qdrant REST Client (HTTP/1.1 - port 6333, bypasses HTTP/2 proxy issues)
 builder.Services.AddHttpClient<QdrantRestClient>();
 
 // 3. Embedding Generator
 builder.Services.AddHttpClient<OllamaEmbeddingService>();
 builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>, OllamaEmbeddingService>();
 
-// 4. Semantic Kernel with custom HttpClient (long timeout for Ollama)
 var ollamaSettings = builder.Configuration.GetSection("Ollama").Get<OllamaSettings>() ?? new OllamaSettings();
 
 
@@ -89,6 +87,6 @@ app.MapStaticAssets();
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}")
-    .WithStaticAssets();
+    .WithStaticAssets();    
 
 app.Run();

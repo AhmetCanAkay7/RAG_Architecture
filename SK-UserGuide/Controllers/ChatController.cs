@@ -38,7 +38,8 @@ public class ChatController : Controller
             {
                 var escapedChunk = chunk.Replace("\n", "\\n").Replace("\r", "");
                 await Response.WriteAsync($"data: {escapedChunk}\n\n", cancellationToken);
-                await Response.Body.FlushAsync(cancellationToken);
+                await Response.Body.FlushAsync(cancellationToken); // Anında gönder, buffer bekleme!
+
             }
         }
         catch (OperationCanceledException)
