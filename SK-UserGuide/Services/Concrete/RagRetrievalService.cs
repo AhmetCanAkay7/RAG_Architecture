@@ -221,17 +221,25 @@ public class RagRetrievalService : IRagRetrievalService
 
     /// <summary>
     /// Format sources for display at the end of streaming response.
+    /// Format: [index] filename - page no - section title
     /// </summary>
     private string FormatSources(CompressedContext context)
     {
         if (context.Items.Count == 0)
             return string.Empty;
 
-        var sources = context.Items
-            .Select(i => $"[{i.Index}] {i.DocName ?? "Unknown"}" + (i.Page.HasValue ? $" (p.{i.Page})" : ""))
-            .Distinct();
+        var sourceLines = context.Items
+            .Select(i =>
+            {
+                var parts = new List<string> { $"[{i.Index}] {i.DocName ?? "Unknown"}" };
+                if (i.Page.HasValue)
+                    parts.Add($"Page {i.Page}");
+                if (!string.IsNullOrEmpty(i.Section))
+                    parts.Add(i.Section);
+                return string.Join(" - ", parts);
+            });
 
-        return "\n\n---\n📚 **Sources:** " + string.Join(", ", sources);
+        return "\n\n---\n📚 **Sources:**\n" + string.Join("\n", sourceLines);
     }
 }
 
