@@ -9,4 +9,9 @@ public interface IRagRetrievalService
     /// Process a question with RAG pipeline.
     /// </summary>
     Task<string> AskAsync(string question);
+
+    /// <summary>
+    /// Process a question with RAG pipeline using streaming response.
+    /// </summary>
+    IAsyncEnumerable<string> AskStreamingAsync(string question, CancellationToken cancellationToken = default);
 }

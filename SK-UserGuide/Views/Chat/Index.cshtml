@@ -348,117 +348,145 @@
 </div>
 
 @section Scripts {
-    <script>
-        const chatMessages = document.getElementById('chatMessages');
-        const questionInput = document.getElementById('questionInput');
-        const sendBtn = document.getElementById('sendBtn');
+        <script>
+            const chatMessages = document.getElementById('chatMessages');
+            const questionInput = document.getElementById('questionInput');
+            const sendBtn = document.getElementById('sendBtn');
 
-        // Enter tu?u ile gönder
-        function handleKeyPress(event) {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
+            // Enter tu?u ile gönder
+            function handleKeyPress(event) {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    sendQuestion();
+                }
+            }
+
+            // H?zl? soru sor
+            function askQuickQuestion(question) {
+                questionInput.value = question;
                 sendQuestion();
             }
-        }
 
-        // H?zl? soru sor
-        function askQuickQuestion(question) {
-            questionInput.value = question;
-            sendQuestion();
-        }
-
-        // Format time
-        function formatTime() {
-            return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        }
-
-        // Mesaj ekle
-        function addMessage(text, isUser, isError = false) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isUser ? 'user' : (isError ? 'bot error' : 'bot')}`;
-            messageDiv.innerHTML = `
-                        ${text}
-                        <span class="time">${formatTime()}</span>
-                    `;
-            chatMessages.appendChild(messageDiv);
-            scrollToBottom();
-        }
-
-        // Typing indicator ekle
-        function showTypingIndicator() {
-            const typingDiv = document.createElement('div');
-            typingDiv.id = 'typingIndicator';
-            typingDiv.className = 'typing-indicator';
-            typingDiv.innerHTML = '<span></span><span></span><span></span>';
-            chatMessages.appendChild(typingDiv);
-            scrollToBottom();
-        }
-
-        // Typing indicator kald?r
-        function hideTypingIndicator() {
-            const typing = document.getElementById('typingIndicator');
-            if (typing) typing.remove();
-        }
-
-        // En alta scroll
-        function scrollToBottom() {
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        // Soru gönder
-        async function sendQuestion() {
-            const question = questionInput.value.trim();
-
-            if (!question) {
-                questionInput.focus();
-                return;
+            // Format time
+            function formatTime() {
+                return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
             }
 
-            // UI'? devre d??? b?rak
-            questionInput.disabled = true;
-            sendBtn.disabled = true;
+            // Mesaj ekle
+            function addMessage(text, isUser, isError = false) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${isUser ? 'user' : (isError ? 'bot error' : 'bot')}`;
+                messageDiv.innerHTML = `
+                            ${text}
+                            <span class="time">${formatTime()}</span>
+                        `;
+                chatMessages.appendChild(messageDiv);
+                scrollToBottom();
+            }
 
-            // Kullan?c? mesaj?n? ekle
-            addMessage(question, true);
-            questionInput.value = '';
+            // Typing indicator ekle
+            function showTypingIndicator() {
+                const typingDiv = document.createElement('div');
+                typingDiv.id = 'typingIndicator';
+                typingDiv.className = 'typing-indicator';
+                typingDiv.innerHTML = '<span></span><span></span><span></span>';
+                chatMessages.appendChild(typingDiv);
+                scrollToBottom();
+            }
 
-            // Typing göster
-            showTypingIndicator();
+            // Typing indicator kald?r
+            function hideTypingIndicator() {
+                const typing = document.getElementById('typingIndicator');
+                if (typing) typing.remove();
+            }
 
-            try {
-                // ChatController'a istek at
-                const response = await fetch('@Url.Action("Ask", "Chat")', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: `question=${encodeURIComponent(question)}`
-                });
+            // En alta scroll
+            function scrollToBottom() {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
 
-                const result = await response.json();
+            // Soru gönder - Streaming ile
+            function sendQuestion() {
+                const question = questionInput.value.trim();
 
-                hideTypingIndicator();
-
-                if (result.success) {
-                    addMessage(result.answer, false);
-                } else {
-                    addMessage(`?? ${result.answer}`, false, true);
+                if (!question) {
+                    questionInput.focus();
+                    return;
                 }
-            } catch (error) {
-                hideTypingIndicator();
-                addMessage('❌ An error occurred while connecting to the server. Please try again.', false, true);
-                console.error('Error:', error);
-            } finally {
-                // UI'? tekrar aktif et
-                questionInput.disabled = false;
-                sendBtn.disabled = false;
-                questionInput.focus();
-            }
-        }
 
-        // Sayfa yüklendi?inde input'a focus
-        document.addEventListener('DOMContentLoaded', () => {
-            questionInput.focus();
-        });
-    </script>
+                // UI'ı devre dışı bırak
+                questionInput.disabled = true;
+                sendBtn.disabled = true;
+
+                // Kullanıcı mesajını ekle
+                addMessage(question, true);
+                questionInput.value = '';
+
+                // Streaming için boş bot mesajı oluştur
+                const botMessage = document.createElement('div');
+                botMessage.className = 'message bot';
+                botMessage.innerHTML = '<span class="streaming-text"></span><span class="time">' + formatTime() + '</span>';
+                chatMessages.appendChild(botMessage);
+
+                const streamingText = botMessage.querySelector('.streaming-text');
+                let fullText = '';
+
+                // EventSource ile streaming bağlantısı
+                const streamUrl = '@Url.Action("AskStreaming", "Chat")' + '?question=' + encodeURIComponent(question);
+                const eventSource = new EventSource(streamUrl);
+
+                eventSource.onmessage = function(event) {
+                    const data = event.data;
+
+                    // Stream sonu kontrolü
+                    if (data === '[DONE]') {
+                        eventSource.close();
+                        // Markdown'ı render et (eğer varsa)
+                        streamingText.innerHTML = formatMarkdown(fullText);
+                        scrollToBottom();
+
+                        // UI'ı tekrar aktif et
+                        questionInput.disabled = false;
+                        sendBtn.disabled = false;
+                        questionInput.focus();
+                        return;
+                    }
+
+                    // Newline'ları geri çevir
+                    const text = data.replace(/\\n/g, '\n');
+                    fullText += text;
+
+                    // Anlık gösterim için basit escape
+                    streamingText.textContent = fullText;
+                    scrollToBottom();
+                };
+
+                eventSource.onerror = function(error) {
+                    eventSource.close();
+
+                    if (fullText === '') {
+                        streamingText.innerHTML = '❌ An error occurred while connecting to the server.';
+                        botMessage.classList.add('error');
+                    }
+
+                    // UI'ı tekrar aktif et
+                    questionInput.disabled = false;
+                    sendBtn.disabled = false;
+                    questionInput.focus();
+                };
+            }
+
+            // Basit Markdown formatlama
+            function formatMarkdown(text) {
+                return text
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')  // Bold
+                    .replace(/\n/g, '<br>')  // Newlines
+                    .replace(/---/g, '<hr>');  // Horizontal rule
+            }
+
+            // Sayfa yüklendi?inde input'a focus
+            document.addEventListener('DOMContentLoaded', () => {
+                questionInput.focus();
+            });
+        </script>
 }
