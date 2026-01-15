@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
-using OpenAI.Assistants;
 using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.LLM;
@@ -18,7 +17,6 @@ public class RagRetrievalService : IRagRetrievalService
     private readonly ContextCompressor _compressor;
     private readonly PromptBuilder _promptBuilder;
     private readonly ResponseFormatter _responseFormatter;
-    private readonly QueryTranslator _queryTranslator;
     private readonly string _responseMode;
 
     // System prompts
@@ -27,15 +25,13 @@ public class RagRetrievalService : IRagRetrievalService
     public RagRetrievalService(
         IHybridRetrievalService hybridRetrieval,
         Kernel kernel,
-        IOptions<RagSettings> ragSettings,
-        QueryTranslator? queryTranslator = null)
+        IOptions<RagSettings> ragSettings)
     {
         _hybridRetrieval = hybridRetrieval;
         _kernel = kernel;
         _compressor = new ContextCompressor();
         _promptBuilder = new PromptBuilder();
         _responseFormatter = new ResponseFormatter();
-        _queryTranslator = queryTranslator ?? new QueryTranslator(kernel, enabled: false);
         _responseMode = ragSettings.Value.ResponseMode;
     }
 
@@ -44,26 +40,23 @@ public class RagRetrievalService : IRagRetrievalService
     /// </summary>
     public async Task<string> AskAsync(string question)
     {
-        // 1. Optionally translate query to English
-        string processedQuestion = await TranslateAsync(question);
+        // 1. Try to get context
+        var retrievalResult = await _hybridRetrieval.RetrieveAsync(question);
 
-        // 2. Try to get context
-        var retrievalResult = await _hybridRetrieval.RetrieveAsync(processedQuestion);
-
-        // 3. No context found → Chat mode (LLM sohbet)
+        // 2. No context found → Chat mode (LLM sohbet)
         if (retrievalResult.ChunkCount == 0)
         {
-            return await HandleChatAsync(processedQuestion);
+            return await HandleChatAsync(question);
         }
 
-        // 4. Context found → Check response mode
+        // 3. Context found → Check response mode
         if (_responseMode == "ContextOnly")
         {
-            return HandleContextOnly(processedQuestion, retrievalResult);
+            return HandleContextOnly(question, retrievalResult);
         }
         else // Hybrid
         {
-            return await HandleHybridAsync(processedQuestion, retrievalResult);
+            return await HandleHybridAsync(question, retrievalResult);
         }
     }
 
@@ -148,12 +141,6 @@ public class RagRetrievalService : IRagRetrievalService
         }
     }
 
-    private async Task<string> TranslateAsync(string question)
-    {
-        var translationResult = await _queryTranslator.TranslateIfNeededAsync(question);
-        return translationResult.Query;
-    }
-
     /// <summary>
     /// Process a question with RAG pipeline using streaming response.
     /// Yields LLM tokens as they arrive, then yields sources at the end.
@@ -162,34 +149,31 @@ public class RagRetrievalService : IRagRetrievalService
         string question,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // 1. Translate query
-        string processedQuestion = await TranslateAsync(question);
+        // 1. Get context
+        var retrievalResult = await _hybridRetrieval.RetrieveAsync(question);
 
-        // 2. Get context
-        var retrievalResult = await _hybridRetrieval.RetrieveAsync(processedQuestion);
-
-        // 3. No context found → Chat mode (non-streaming fallback)
+        // 2. No context found → Chat mode (non-streaming fallback)
         if (retrievalResult.ChunkCount == 0)
         {
-            var chatResponse = await HandleChatAsync(processedQuestion);
+            var chatResponse = await HandleChatAsync(question);
             yield return chatResponse;
             yield break;
         }
 
-        // 4. ContextOnly mode → Non-streaming fallback
+        // 3. ContextOnly mode → Non-streaming fallback
         if (_responseMode == "ContextOnly")
         {
-            yield return HandleContextOnly(processedQuestion, retrievalResult);
+            yield return HandleContextOnly(question, retrievalResult);
             yield break;
         }
 
-        // 5. Hybrid mode with streaming
+        // 4. Hybrid mode with streaming
         var compressedContext = _compressor.Compress(
             retrievalResult.SelectedChunks,
-            processedQuestion,
+            question,
             "EN");
 
-        var prompt = _promptBuilder.Build(processedQuestion, compressedContext);
+        var prompt = _promptBuilder.Build(question, compressedContext);
 
         // 6. Stream LLM response
         var settings = new PromptExecutionSettings
