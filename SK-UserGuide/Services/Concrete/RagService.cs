@@ -4,8 +4,7 @@ using SK_UserGuide.Services.Chat;
 namespace SK_UserGuide.Services.Concrete;
 
 /// <summary>
-/// RAG service with response caching.
-/// Delegates to IRagRetrievalService for actual RAG processing.
+/// RAG service with response caching and streaming.
 /// </summary>
 public class RagService : IRagService
 {
@@ -21,35 +20,14 @@ public class RagService : IRagService
     }
 
     /// <summary>
-    /// Ask a question using RAG pipeline with response caching.
-    /// </summary>
-    public async Task<string> AskAsync(string question)
-    {
-        // Check cache first
-        if (_responseCache.TryGet(question, out var cachedAnswer))
-        {
-            return cachedAnswer!;
-        }
-
-        // Process with RAG pipeline
-        var answer = await _ragRetrievalService.AskAsync(question);
-
-        // Cache the response
-        _responseCache.Set(question, answer);
-
-        return answer;
-    }
-
-    /// <summary>
-    /// Ask a question using RAG pipeline with streaming response.
-    /// If cached, yields complete response immediately.
-    /// Otherwise, streams response and caches after completion.
+    /// Ask a question with streaming response.
+    /// Cached responses are yielded immediately.
     /// </summary>
     public async IAsyncEnumerable<string> AskStreamingAsync(
         string question,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // Check cache first - if cached, yield complete response immediately
+        // Check cache first
         if (_responseCache.TryGet(question, out var cachedAnswer))
         {
             yield return cachedAnswer!;
@@ -65,7 +43,7 @@ public class RagService : IRagService
             yield return chunk;
         }
 
-        // Cache the complete response for future requests
+        // Cache the complete response
         var completeResponse = fullResponse.ToString();
         if (!string.IsNullOrEmpty(completeResponse))
         {
@@ -73,4 +51,3 @@ public class RagService : IRagService
         }
     }
 }
-

@@ -3,6 +3,9 @@ using SK_UserGuide.Services.Abstract;
 
 namespace SK_UserGuide.Controllers;
 
+/// <summary>
+/// Chat controller with streaming SSE endpoint.
+/// </summary>
 public class ChatController : Controller
 {
     private readonly IRagService _ragService;
@@ -10,35 +13,6 @@ public class ChatController : Controller
     public ChatController(IRagService ragService)
     {
         _ragService = ragService;
-    }
-
-    [HttpPost]
-    public async Task<IActionResult> Ask(string question)
-    {
-        if (string.IsNullOrWhiteSpace(question))
-        {
-            return Json(new { success = false, answer = "Empty message cannot be sent." });
-        }
-
-        try
-        {
-            var answer = await _ragService.AskAsync(question);
-            return Json(new { success = true, answer });
-        }
-        catch (Exception exception)
-        {
-            var errorMessage = $"Error: {exception.Message}";
-            if (exception.InnerException != null)
-            {
-                errorMessage += $" | Inner: {exception.InnerException.Message}";
-            }
-
-            return Json(new
-            {
-                success = false,
-                answer = errorMessage
-            });
-        }
     }
 
     /// <summary>
@@ -62,7 +36,6 @@ public class ChatController : Controller
         {
             await foreach (var chunk in _ragService.AskStreamingAsync(question, cancellationToken))
             {
-                // Escape newlines for SSE format
                 var escapedChunk = chunk.Replace("\n", "\\n").Replace("\r", "");
                 await Response.WriteAsync($"data: {escapedChunk}\n\n", cancellationToken);
                 await Response.Body.FlushAsync(cancellationToken);
@@ -70,7 +43,7 @@ public class ChatController : Controller
         }
         catch (OperationCanceledException)
         {
-            // Client disconnected, graceful exit
+            // Client disconnected
         }
         catch (Exception ex)
         {

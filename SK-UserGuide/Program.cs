@@ -35,11 +35,7 @@ builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>, Oll
 // 4. Semantic Kernel with custom HttpClient (long timeout for Ollama)
 var ollamaSettings = builder.Configuration.GetSection("Ollama").Get<OllamaSettings>() ?? new OllamaSettings();
 
-// Register HttpClient for Semantic Kernel with extended timeout
-builder.Services.AddHttpClient("SemanticKernelClient", client =>
-{
-    client.Timeout = TimeSpan.FromMinutes(5); // 5 minute timeout for slow LLM responses
-});
+
 
 // Build kernel with Ollama
 var kernelBuilder = Kernel.CreateBuilder();

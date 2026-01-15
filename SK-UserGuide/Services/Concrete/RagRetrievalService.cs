@@ -8,7 +8,8 @@ using SK_UserGuide.Services.Retrieval;
 namespace SK_UserGuide.Services.Concrete;
 
 /// <summary>
-/// RAG retrieval service with configurable response modes.
+/// RAG retrieval service with streaming responses.
+/// Supports: Hybrid mode (LLM + context) and ContextOnly mode (no LLM).
 /// </summary>
 public class RagRetrievalService : IRagRetrievalService
 {
@@ -16,11 +17,9 @@ public class RagRetrievalService : IRagRetrievalService
     private readonly Kernel _kernel;
     private readonly ContextCompressor _compressor;
     private readonly PromptBuilder _promptBuilder;
-    private readonly ResponseFormatter _responseFormatter;
     private readonly string _responseMode;
 
-    // System prompts
-    private const string ChatSystemPrompt = "You are a helpful assistant.Respond briefly in English.";
+    private const string ChatSystemPrompt = "You are a helpful assistant. Respond briefly in English.";
 
     public RagRetrievalService(
         IHybridRetrievalService hybridRetrieval,
@@ -31,143 +30,38 @@ public class RagRetrievalService : IRagRetrievalService
         _kernel = kernel;
         _compressor = new ContextCompressor();
         _promptBuilder = new PromptBuilder();
-        _responseFormatter = new ResponseFormatter();
         _responseMode = ragSettings.Value.ResponseMode;
     }
 
     /// <summary>
-    /// Process a question with configurable response mode.
-    /// </summary>
-    public async Task<string> AskAsync(string question)
-    {
-        // 1. Try to get context
-        var retrievalResult = await _hybridRetrieval.RetrieveAsync(question);
-
-        // 2. No context found → Chat mode (LLM sohbet)
-        if (retrievalResult.ChunkCount == 0)
-        {
-            return await HandleChatAsync(question);
-        }
-
-        // 3. Context found → Check response mode
-        if (_responseMode == "ContextOnly")
-        {
-            return HandleContextOnly(question, retrievalResult);
-        }
-        else // Hybrid
-        {
-            return await HandleHybridAsync(question, retrievalResult);
-        }
-    }
-
-    /// <summary>
-    /// Chat mode: Direct LLM response without context (for greetings, general conversation).
-    /// </summary>
-    private async Task<string> HandleChatAsync(string question)
-    {
-        var prompt = $"{ChatSystemPrompt}\n\nUser: {question}\nAssistant:";
-        return await CallLLMAsync(prompt);
-    }
-
-    /// <summary>
-    /// ContextOnly mode: Return compressed context directly (fastest).
-    /// </summary>
-    private string HandleContextOnly(string question, RetrievalResult retrievalResult)
-    {
-        var compressedContext = _compressor.Compress(
-            retrievalResult.SelectedChunks,
-            question,
-            "EN");
-
-        var response = _responseFormatter.Format(
-            compressedContext.Summary,
-            compressedContext,
-            "EN");
-
-        return response.ToDisplayString();
-    }
-
-    /// <summary>
-    /// Hybrid mode: Context + LLM processing (current behavior).
-    /// </summary>
-    private async Task<string> HandleHybridAsync(string question, RetrievalResult retrievalResult)
-    {
-        // Context compression
-        var compressedContext = _compressor.Compress(
-            retrievalResult.SelectedChunks,
-            question,
-            "EN");
-
-        // Build prompt with RAG system prompt
-        var prompt = _promptBuilder.Build(question, compressedContext);
-
-        // Call LLM
-        var rawAnswer = await CallLLMAsync(prompt);
-
-        // Format response
-        var response = _responseFormatter.Format(
-            rawAnswer,
-            compressedContext,
-            "EN");
-
-        return response.ToDisplayString();
-    }
-
-    /// <summary>
-    /// Call LLM with the given prompt.
-    /// </summary>
-    private async Task<string> CallLLMAsync(string prompt)
-    {
-        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-
-        try
-        {
-            var settings = new PromptExecutionSettings
-            {
-                ExtensionData = new Dictionary<string, object>
-                {
-                    ["max_tokens"] = 512,
-                    ["temperature"] = 0.2,
-                    ["top_p"] = 0.85
-                }
-            };
-
-            var result = await _kernel.InvokePromptAsync(prompt, new KernelArguments(settings), cancellationToken: cts.Token);
-            return result.GetValue<string>() ?? "Unable to generate response.";
-        }
-        catch (OperationCanceledException)
-        {
-            return "LLM response timed out. Please try again.";
-        }
-    }
-
-    /// <summary>
-    /// Process a question with RAG pipeline using streaming response.
-    /// Yields LLM tokens as they arrive, then yields sources at the end.
+    /// Process a question with streaming response.
     /// </summary>
     public async IAsyncEnumerable<string> AskStreamingAsync(
         string question,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // 1. Get context
+        // 1. Get context from vector DB
         var retrievalResult = await _hybridRetrieval.RetrieveAsync(question);
 
-        // 2. No context found → Chat mode (non-streaming fallback)
+        // 2. No context → General chat (streaming)
         if (retrievalResult.ChunkCount == 0)
         {
-            var chatResponse = await HandleChatAsync(question);
-            yield return chatResponse;
+            var chatPrompt = $"{ChatSystemPrompt}\n\nUser: {question}\nAssistant:";
+            await foreach (var chunk in StreamLLMAsync(chatPrompt, cancellationToken))
+            {
+                yield return chunk;
+            }
             yield break;
         }
 
-        // 3. ContextOnly mode → Non-streaming fallback
+        // 3. ContextOnly mode → Return context directly (no LLM)
         if (_responseMode == "ContextOnly")
         {
-            yield return HandleContextOnly(question, retrievalResult);
+            yield return FormatContextOnly(question, retrievalResult);
             yield break;
         }
 
-        // 4. Hybrid mode with streaming
+        // 4. Hybrid mode → Stream LLM response with sources
         var compressedContext = _compressor.Compress(
             retrievalResult.SelectedChunks,
             question,
@@ -175,7 +69,26 @@ public class RagRetrievalService : IRagRetrievalService
 
         var prompt = _promptBuilder.Build(question, compressedContext);
 
-        // 6. Stream LLM response
+        await foreach (var chunk in StreamLLMAsync(prompt, cancellationToken))
+        {
+            yield return chunk;
+        }
+
+        // Append sources at the end
+        var sources = FormatSources(compressedContext);
+        if (!string.IsNullOrEmpty(sources))
+        {
+            yield return sources;
+        }
+    }
+
+    /// <summary>
+    /// Stream LLM response token by token.
+    /// </summary>
+    private async IAsyncEnumerable<string> StreamLLMAsync(
+        string prompt,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
         var settings = new PromptExecutionSettings
         {
             ExtensionData = new Dictionary<string, object>
@@ -194,20 +107,28 @@ public class RagRetrievalService : IRagRetrievalService
                 yield return text;
             }
         }
-
-        // 7. After LLM stream ends, yield sources
-        var sources = FormatSources(compressedContext);
-        if (!string.IsNullOrEmpty(sources))
-        {
-            yield return sources;
-        }
     }
 
     /// <summary>
-    /// Format sources for display at the end of streaming response.
-    /// Format: [index] filename - page no - section title
+    /// Format context-only response (no LLM call).
     /// </summary>
-    private string FormatSources(CompressedContext context)
+    private string FormatContextOnly(string question, RetrievalResult retrievalResult)
+    {
+        var compressedContext = _compressor.Compress(
+            retrievalResult.SelectedChunks,
+            question,
+            "EN");
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(compressedContext.Summary);
+        sb.Append(FormatSources(compressedContext));
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Format sources for display.
+    /// </summary>
+    private static string FormatSources(CompressedContext context)
     {
         if (context.Items.Count == 0)
             return string.Empty;
@@ -226,4 +147,3 @@ public class RagRetrievalService : IRagRetrievalService
         return "\n\n---\n📚 **Sources:**\n" + string.Join("\n", sourceLines);
     }
 }
-
