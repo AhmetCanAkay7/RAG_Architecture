@@ -1,26 +1,7 @@
 namespace SK_UserGuide.Services.Ingestion;
 
-/// <summary>
-/// Stack-based hierarchical context builder for heading tracking.
-/// Maintains heading hierarchy and generates breadcrumb-style context prefixes.
-/// </summary>
-/// <example>
-/// Given document headings:
-///   # Introduction
-///   ## Installation
-///   ### Windows
-///   ## Troubleshooting
-/// 
-/// Produces prefixes:
-///   [Section: Introduction] >
-///   [Section: Introduction > Installation] >
-///   [Section: Introduction > Installation > Windows] >
-///   [Section: Introduction > Troubleshooting] >
-/// </example>
 public class HierarchicalContextBuilder
 {
-    // Stack stores (Level, CleanText) tuples
-    // Level = number of # characters (1 for #, 2 for ##, etc.)
     private readonly Stack<(int Level, string Text)> _headingStack = new();
 
     /// <summary>

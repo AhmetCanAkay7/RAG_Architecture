@@ -6,11 +6,6 @@ using System.Text.Json.Serialization;
 using SK_UserGuide.Configuration;
 
 namespace SK_UserGuide.Services.Concrete;
-
-/// <summary>
-/// Custom embedding service that uses Ollama's embedding API.
-/// Uses the new /api/embed endpoint (Ollama 0.4+).
-/// </summary>
 public class OllamaEmbeddingService : IEmbeddingGenerator<string, Embedding<float>>
 {
     private readonly HttpClient _httpClient;

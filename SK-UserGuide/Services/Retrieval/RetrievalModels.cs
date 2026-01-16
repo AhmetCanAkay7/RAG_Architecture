@@ -14,46 +14,14 @@ public record ScoredChunk
     public int? Page { get; init; }
     public int? ChunkIndex { get; init; }
     public int? Version { get; init; }
-
-    /// <summary>
-    /// Actual token count from Qdrant metadata (calculated with Tiktoken during ingestion).
-    /// Falls back to character-based estimation if not available.
-    /// </summary>
     public int EstimatedTokens { get; init; }
 }
-
-/// <summary>
-/// Result of the hybrid retrieval process.
-/// </summary>
 public record RetrievalResult
 {
-    /// <summary>
-    /// Assembled context string for LLM.
-    /// </summary>
     public required string Context { get; init; }
-
-    /// <summary>
-    /// Citation list for sources.
-    /// </summary>
     public required List<string> Citations { get; init; }
-
-    /// <summary>
-    /// Selected chunks after all filtering.
-    /// </summary>
     public required List<ScoredChunk> SelectedChunks { get; init; }
-
-    /// <summary>
-    /// Number of chunks in final selection.
-    /// </summary>
     public int ChunkCount => SelectedChunks.Count;
-
-    /// <summary>
-    /// Total candidates before filtering.
-    /// </summary>
     public int TotalCandidates { get; init; }
-
-    /// <summary>
-    /// Total tokens used in context.
-    /// </summary>
     public int TokensUsed { get; init; }
 }

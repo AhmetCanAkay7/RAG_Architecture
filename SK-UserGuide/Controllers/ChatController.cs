@@ -21,6 +21,7 @@ public class ChatController : Controller
     [HttpGet]
     public async Task AskStreaming(string question, CancellationToken cancellationToken)
     {
+        // browser'a parca parca veri gondereceğimizin haberini veriyoruz.
         Response.ContentType = "text/event-stream";
         Response.Headers.Append("Cache-Control", "no-cache");
         Response.Headers.Append("Connection", "keep-alive");
@@ -37,7 +38,7 @@ public class ChatController : Controller
             await foreach (var chunk in _ragService.AskStreamingAsync(question, cancellationToken))
             {
                 var escapedChunk = chunk.Replace("\n", "\\n").Replace("\r", "");
-                await Response.WriteAsync($"data: {escapedChunk}\n\n", cancellationToken);
+                await Response.WriteAsync($"data: {escapedChunk}\n\n", cancellationToken); // response stream'e yazar.
                 await Response.Body.FlushAsync(cancellationToken); // Anında gönder, buffer bekleme!
 
             }

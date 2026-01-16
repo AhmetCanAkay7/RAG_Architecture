@@ -93,12 +93,12 @@ public class RagRetrievalService : IRagRetrievalService
         {
             ExtensionData = new Dictionary<string, object>
             {
-                ["max_tokens"] = 512,
+                ["max_tokens"] = 256,
                 ["temperature"] = 0.2,
                 ["top_p"] = 0.85
             }
         };
-
+        //kernel, LLM ile canlı baglantı kurar, LLM her token urettiginde bu foreach dongusu bir tur doner.
         await foreach (var chunk in _kernel.InvokePromptStreamingAsync(prompt, new KernelArguments(settings), cancellationToken: cancellationToken))
         {
             var text = chunk.ToString();
@@ -109,9 +109,6 @@ public class RagRetrievalService : IRagRetrievalService
         }
     }
 
-    /// <summary>
-    /// Format context-only response (no LLM call).
-    /// </summary>
     private string FormatContextOnly(string question, RetrievalResult retrievalResult)
     {
         var compressedContext = _compressor.Compress(

@@ -9,11 +9,6 @@ using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.Concrete;
 
 namespace SK_UserGuide.Services.Retrieval;
-
-/// <summary>
-/// Hybrid retrieval service combining dense (embedding) and sparse (keyword) search.
-/// Features: RRF fusion, dynamic threshold, diversity selection, token-budgeted context.
-/// </summary>
 public class HybridRetrievalService : IHybridRetrievalService
 {
     private readonly QdrantRestClient _qdrantClient;

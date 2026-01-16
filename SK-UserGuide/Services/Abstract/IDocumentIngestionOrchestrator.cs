@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using SK_UserGuide.Services.Ingestion;
 
 namespace SK_UserGuide.Services.Abstract;
 
@@ -10,5 +11,5 @@ public interface IDocumentIngestionOrchestrator
     /// <summary>
     /// Ingest a document file into the vector store.
     /// </summary>
-    Task<SK_UserGuide.Services.Ingestion.IngestionResult> IngestAsync(IFormFile file);
+    Task<IngestionResult> IngestAsync(IFormFile file);
 }

@@ -1,11 +1,6 @@
 using System.Collections.Concurrent;
 
 namespace SK_UserGuide.Services.Chat;
-
-/// <summary>
-/// Simple in-memory cache for RAG responses.
-/// Avoids redundant vector search + LLM calls for identical questions.
-/// </summary>
 public class ResponseCache
 {
     private readonly ConcurrentDictionary<string, CachedResponse> _cache = new();

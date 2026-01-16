@@ -1,8 +1,5 @@
 ﻿namespace SK_UserGuide.Services.Abstract;
 
-/// <summary>
-/// Interface for RAG service with caching and streaming.
-/// </summary>
 public interface IRagService
 {
     /// <summary>

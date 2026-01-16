@@ -2,27 +2,14 @@ using System.Security.Cryptography;
 using System.Text;
 
 namespace SK_UserGuide.Services.Ingestion;
-
-/// <summary>
-/// Builds standardized metadata for document chunks.
-/// Handles stable document IDs, versioning, and content hashing.
-/// </summary>
 public class DocumentMetadataBuilder
 {
-    /// <summary>
-    /// Generate a stable document ID from filename.
-    /// Same file uploaded multiple times gets the same ID.
-    /// </summary>
     public string GenerateStableDocId(string fileName)
     {
         using var sha = SHA256.Create();
         var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(fileName.ToLowerInvariant().Trim()));
         return Convert.ToHexString(hash)[..16]; // İlk 16 karakter
     }
-
-    /// <summary>
-    /// Generate content hash for deduplication.
-    /// </summary>
     public string GenerateContentHash(string text)
     {
         using var sha = SHA256.Create();

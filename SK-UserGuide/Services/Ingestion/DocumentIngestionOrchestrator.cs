@@ -85,7 +85,7 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
             _logger.LogInformation("Extracted {PageCount} pages from {FileName}",
                 extractedDoc.Pages.Count, fileName);
 
-            // 3. Chunking (temizleme chunker içinde yapılıyor)
+            // 3. Chunking
             var chunks = _chunker.Chunk(extractedDoc);
 
             if (chunks.Count == 0)

@@ -30,7 +30,7 @@ public class RagService : IRagService
             yield break;
         }
 
-        var fullResponse = new System.Text.StringBuilder();
+        var fullResponse = new System.Text.StringBuilder(); // asagidan parca parca geliyor, cahce'e butun hali konmal?
 
         await foreach (var chunk in _ragRetrievalService.AskStreamingAsync(question, cancellationToken))
         {
