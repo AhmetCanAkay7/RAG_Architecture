@@ -13,7 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 // CORS policy for API access from other local projects
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("LocalApi", policy =>
+    options.AddPolicy("AllowCP", policy =>
     {
         policy.SetIsOriginAllowed(origin =>
                 new Uri(origin).Host == "localhost" ||
@@ -29,6 +29,10 @@ builder.Services.AddControllersWithViews()
     {
         options.JsonSerializerOptions.Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
     });
+
+// Swagger/OpenAPI support
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 // Encoding provider for Turkish characters
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
@@ -92,8 +96,12 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseRouting();
-app.UseCors("LocalApi");
+app.UseCors("AllowCP");
 app.UseAuthorization();
+
+// Enable Swagger (even in Production for easier testing of this API)
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.MapStaticAssets();
 

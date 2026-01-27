@@ -94,7 +94,7 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
 
             _logger.LogInformation("Created {ChunkCount} chunks from {FileName}", chunks.Count, fileName);
 
-            // 4. Delete existing chunks for this document (if re-uploading)
+            await _qdrantRepo.EnsureCollectionAsync();
             await _qdrantRepo.DeleteByDocIdAsync(docId);
             _logger.LogInformation("Cleared existing chunks for DocId: {DocId}", docId);
 
