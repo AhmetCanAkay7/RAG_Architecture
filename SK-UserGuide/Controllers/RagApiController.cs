@@ -17,6 +17,108 @@ public partial class RagApiController : ControllerBase
         _logger = logger;
     }
 
+
+    /// <summary>
+    /// Streaming endpoint - Returns response token by token via Server-Sent Events.
+    /// Use this for real-time chat UI experience.
+    /// Sources are sent as a separate structured event at the end.
+    /// </summary>
+    [HttpPost("ask/stream")]
+    public async Task AskStreaming([FromBody] RagQuestionRequest request, CancellationToken cancellationToken)
+    {
+        Response.ContentType = "text/event-stream";
+        Response.Headers.Append("Cache-Control", "no-cache");
+        Response.Headers.Append("Connection", "keep-alive");
+        Response.Headers.Append("X-Accel-Buffering", "no");
+
+        if (string.IsNullOrWhiteSpace(request.Question))
+        {
+            await WriteSSEAsync("error", new { error = "Question cannot be empty." }, cancellationToken);
+            await WriteSSEAsync("done", new { success = false }, cancellationToken);
+            return;
+        }
+
+        try
+        {
+            _logger.LogInformation("RAG Streaming API request: {Question}", request.Question);
+
+            var fullResponse = new System.Text.StringBuilder();
+            var sourcesStarted = false;
+            var sourcesMarker = "---\n📚 **Sources:**";
+
+            // Stream each token as it arrives, but stop when sources section begins
+            await foreach (var chunk in _ragService.AskStreamingAsync(request.Question, cancellationToken))
+            {
+                fullResponse.Append(chunk);
+
+                // Check if this chunk contains the sources marker
+                var currentText = fullResponse.ToString();
+                var sourcesIndex = currentText.IndexOf(sourcesMarker, StringComparison.Ordinal);
+
+                if (sourcesIndex >= 0)
+                {
+                    // Sources section started - don't stream sources, we'll send them separately
+                    if (!sourcesStarted)
+                    {
+                        sourcesStarted = true;
+                        // Send any remaining text before sources marker
+                        var beforeSources = currentText[..sourcesIndex].TrimEnd();
+                        var alreadySent = currentText.Length - chunk.Length;
+                        if (sourcesIndex > alreadySent)
+                        {
+                            var remaining = beforeSources[alreadySent..];
+                            if (!string.IsNullOrEmpty(remaining))
+                            {
+                                await WriteSSEAsync("chunk", new { text = remaining }, cancellationToken);
+                            }
+                        }
+                    }
+                    // Skip streaming sources chunks
+                }
+                else if (!sourcesStarted)
+                {
+                    // Normal chunk - stream it
+                    await WriteSSEAsync("chunk", new { text = chunk }, cancellationToken);
+                }
+            }
+
+            // Extract and send sources as structured data at the end
+            var completeResponse = fullResponse.ToString();
+            var sources = ExtractSources(completeResponse);
+
+            if (sources.Count > 0)
+            {
+                await WriteSSEAsync("sources", new { sources }, cancellationToken);
+            }
+
+            await WriteSSEAsync("done", new { fromCache = false }, cancellationToken);
+
+            _logger.LogInformation("RAG Streaming completed for: {Question}", request.Question);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("RAG Streaming cancelled by client");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "RAG Streaming error for question: {Question}", request.Question);
+            await WriteSSEAsync("error", new { error = "An error occurred processing your request." }, cancellationToken);
+            await WriteSSEAsync("done", new { success = false }, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Write Server-Sent Event to response stream.
+    /// </summary>
+    private async Task WriteSSEAsync(string eventType, object? data, CancellationToken cancellationToken)
+    {
+        var json = data is null ? "{}" : System.Text.Json.JsonSerializer.Serialize(data);
+        await Response.WriteAsync($"event: {eventType}\n", cancellationToken);
+        await Response.WriteAsync($"data: {json}\n\n", cancellationToken);
+        await Response.Body.FlushAsync(cancellationToken);
+    }
+
+
     [HttpPost("ask")]
     [ProducesResponseType(typeof(RagAnswerResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
