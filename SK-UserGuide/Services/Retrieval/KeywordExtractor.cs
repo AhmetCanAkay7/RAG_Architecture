@@ -4,33 +4,29 @@ using System.Text.RegularExpressions;
 namespace SK_UserGuide.Services.Retrieval;
 
 /// <summary>
-/// Extracts keywords from text for sparse search.
-/// Handles stopwords, special patterns (error codes, CamelCase), and normalization.
+/// Extracts keywords for sparse search using "Negative Selection" (Stopword Filtering).
+/// This allows the system to detect meaningful phrases dynamically without hardcoded domain lists.
 /// </summary>
 public static class KeywordExtractor
 {
+    // Comprehensive list of English "Noise" words (Stopwords)
     private static readonly HashSet<string> EnglishStopwords = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Question words
-        "what", "how", "why", "when", "where", "which", "who", "whom",
+        // Articles & Prepositions
+        "a", "an", "the", "in", "on", "at", "to", "for", "of", "with", "by", "from", "up", "about", "into", "over", "after", "through", "during", "before",
         // Conjunctions
-        "and", "or", "but", "because", "although", "however", "therefore",
-        // Articles/Prepositions
-        "a", "an", "the", "in", "on", "at", "to", "for", "of", "with", "by",
-        // Pronouns
-        "i", "you", "he", "she", "it", "we", "they", "my", "your", "his", "her",
-        // Auxiliary verbs
-        "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
-        "do", "does", "did", "will", "would", "could", "should", "can", "may",
-        // Common words
-        "this", "that", "these", "those", "if", "then", "more", "less", "very",
-        "about", "also", "into", "such", "make", "get", "see", "know", "just"
+        "and", "or", "but", "because", "although", "however", "therefore", "if", "then", "than", "so", "as", "while", "since",
+        // Pronouns & Verbs (auxiliary)
+        "i", "you", "he", "she", "it", "we", "they", "my", "your", "his", "her", "their", "our", "us", "them",
+        "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did",
+        "can", "could", "will", "would", "should", "may", "might", "must",
+        // Common Quantifiers & Adverbs
+        "this", "that", "these", "those", "some", "any", "all", "more", "most", "less", "very", "just", "only", "also", "too",
+        // Interaction/Filler Words (Crucial for cleaning chat queries)
+        "please", "help", "tell", "say", "ask", "know", "how", "what", "why", "when", "where", "which", "who", "whom",
+        "show", "find", "search", "give", "need", "want", "look", "looking", "thanks", "thank", "hello", "hi", "hey"
     };
 
-    /// <summary>
-    /// Extract keywords from a question for sparse search.
-    /// Includes bigrams (2-word phrases) and trigrams (3-word phrases) for better precision.
-    /// </summary>
     public static List<string> Extract(string text, int maxKeywords = 15)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -38,22 +34,31 @@ public static class KeywordExtractor
 
         var keywords = new List<string>();
 
-        // 1. Extract special patterns first (error codes, CamelCase, etc.)
+        // 1. High Priority: Special Patterns (Codes, Acronyms, Quoted Text)
         var specialPatterns = ExtractSpecialPatterns(text);
         keywords.AddRange(specialPatterns);
 
-        // 2. Extract important n-grams (bigrams and trigrams)
+        // 2. Medium Priority: Meaningful Phrases (N-Grams)
+        // We do this BEFORE splitting single words to prioritize "United States" over "United" and "States".
         var ngrams = ExtractNGrams(text);
         keywords.AddRange(ngrams);
 
-        // 3. Tokenize normal words
-        var words = Regex.Split(text.ToLower(CultureInfo.InvariantCulture), @"[\s\p{P}]+")
+        // 3. Low Priority: Single Content Words
+        var tokens = Regex.Split(text, @"[\s\p{P}]+")
             .Where(w => w.Length > 2)
-            .Where(w => !EnglishStopwords.Contains(w))
-            .Where(w => !keywords.Any(k => k.Contains(w, StringComparison.OrdinalIgnoreCase)))
+            .Select(w => w.ToLower(CultureInfo.InvariantCulture))
+            .Where(w => !EnglishStopwords.Contains(w)) 
+            .Distinct()
             .ToList();
 
-        keywords.AddRange(words);
+        // Add single words (Deduplicating against what we already found)
+        foreach (var token in tokens)
+        {
+            if (!keywords.Contains(token, StringComparer.OrdinalIgnoreCase))
+            {
+                keywords.Add(token);
+            }
+        }
 
         var result = keywords
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -67,115 +72,71 @@ public static class KeywordExtractor
         return result;
     }
 
-    /// <summary>
-    /// Extract special patterns like error codes, screen names, etc.
-    /// </summary>
     private static List<string> ExtractSpecialPatterns(string text)
     {
         var patterns = new List<string>();
 
-        // Error codes: ERR-001, ERROR_5001, E1234
-        var errorCodes = Regex.Matches(text, @"[A-Z]{2,}[-_]?\d+", RegexOptions.IgnoreCase);
-        patterns.AddRange(errorCodes.Select(m => m.Value));
+        // Technical Codes: ERR-001, 0x8000, ID_555
+        var codes = Regex.Matches(text, @"\b([A-Z]{2,}[-_]?\d+|0x[0-9A-F]+)\b", RegexOptions.IgnoreCase);
+        patterns.AddRange(codes.Select(m => m.Value));
 
-        // CamelCase: LoginScreen, OrderForm
-        var camelCase = Regex.Matches(text, @"\b[A-Z][a-z]+[A-Z][a-zA-Z]*\b");
+        // CamelCase Terms: LoginScreen, iPhone, WiFi
+        // (Regex explanation: Detects words with mixed Lower and Upper case)
+        var camelCase = Regex.Matches(text, @"\b(?!\b[A-Z]+\b)(?!\b[a-z]+\b)[A-Za-z]+\b");
         patterns.AddRange(camelCase.Select(m => m.Value));
 
-        // Quoted strings: "Save" button
+        // Quoted Strings: "System Failure"
         var quoted = Regex.Matches(text, @"""([^""]+)""");
         patterns.AddRange(quoted.Select(m => m.Groups[1].Value));
 
-        // Screen/menu names: Settings Screen, User Menu
-        var screenNames = Regex.Matches(text, @"\b[A-Z][a-z]+\s+(Screen|Menu|Page|Panel|Form|Dialog|Window)\b",
-            RegexOptions.IgnoreCase);
-        patterns.AddRange(screenNames.Select(m => m.Value));
-
-        // Acronyms: SKU, API, ERP, MRP
-        var acronyms = Regex.Matches(text, @"\b[A-Z]{2,}\b");
+        // Acronyms: API, SQL, PDF (All caps, 2-5 letters)
+        var acronyms = Regex.Matches(text, @"\b[A-Z]{2,5}\b");
         patterns.AddRange(acronyms.Select(m => m.Value));
 
-        return patterns.Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
+        return patterns.Where(p => !string.IsNullOrWhiteSpace(p)).Distinct().ToList();
     }
 
     /// <summary>
-    /// Extract important bigrams (2-word) and trigrams (3-word) phrases.
-    /// Examples: "waste reduction rate", "carbon footprint", "demand forecasting"
+    /// Identifies meaningful phrases by checking if two adjacent words are BOTH "Content Words" (non-stopwords).
     /// </summary>
     private static List<string> ExtractNGrams(string text)
     {
         var ngrams = new List<string>();
 
-        // Tokenize into words (preserve case for now)
-        var allWords = Regex.Split(text, @"[\s\p{P}]+")
-            .Where(w => !string.IsNullOrWhiteSpace(w))
-            .ToArray();
+        // Split by punctuation/whitespace to avoid crossing sentence boundaries (e.g. "end. Start")
+        var words = Regex.Split(text, @"[\s\p{P}]+")
+                         .Where(w => !string.IsNullOrWhiteSpace(w))
+                         .ToArray();
 
-        if (allWords.Length < 2)
-            return ngrams;
+        if (words.Length < 2) return ngrams;
 
-        // Extract bigrams (2-word phrases)
-        for (int i = 0; i < allWords.Length - 1; i++)
+        for (int i = 0; i < words.Length - 1; i++)
         {
-            var word1 = allWords[i].ToLower();
-            var word2 = allWords[i + 1].ToLower();
+            var w1 = words[i].ToLower(CultureInfo.InvariantCulture);
+            var w2 = words[i + 1].ToLower(CultureInfo.InvariantCulture);
 
-            // Skip if either word is a stopword or too short
-            if (EnglishStopwords.Contains(word1) || EnglishStopwords.Contains(word2))
-                continue;
+            // LOGIC: A phrase is meaningful if BOTH words are NOT noise.
+            bool w1IsContent = !EnglishStopwords.Contains(w1) && w1.Length > 2;
+            bool w2IsContent = !EnglishStopwords.Contains(w2) && w2.Length > 2;
 
-            if (word1.Length <= 2 || word2.Length <= 2)
-                continue;
+            if (w1IsContent && w2IsContent)
+            {
+                ngrams.Add($"{w1} {w2}");
 
-            var bigram = $"{word1} {word2}";
-
-            // Only add if it looks like a meaningful phrase (not purely generic)
-            if (IsMeaningfulPhrase(word1, word2))
-                ngrams.Add(bigram);
-        }
-
-        // Extract trigrams (3-word phrases)
-        for (int i = 0; i < allWords.Length - 2; i++)
-        {
-            var word1 = allWords[i].ToLower();
-            var word2 = allWords[i + 1].ToLower();
-            var word3 = allWords[i + 2].ToLower();
-
-            // Skip if middle word is a stopword (e.g., "waste of reduction")
-            if (EnglishStopwords.Contains(word2))
-                continue;
-
-            if (word1.Length <= 2 || word2.Length <= 2 || word3.Length <= 2)
-                continue;
-
-            var trigram = $"{word1} {word2} {word3}";
-
-            if (IsMeaningfulPhrase(word1, word2, word3))
-                ngrams.Add(trigram);
+                // Optional: Check Trigrams (3 words)
+                if (i < words.Length - 2)
+                {
+                    var w3 = words[i + 2].ToLower(CultureInfo.InvariantCulture);
+                    bool w3IsContent = !EnglishStopwords.Contains(w3) && w3.Length > 2;
+                    
+                    if (w3IsContent)
+                    {
+                        ngrams.Add($"{w1} {w2} {w3}");
+                    }
+                }
+            }
         }
 
         return ngrams;
-    }
-
-    /// <summary>
-    /// Check if a phrase is meaningful (heuristic-based).
-    /// </summary>
-    private static bool IsMeaningfulPhrase(params string[] words)
-    {
-        // Domain-specific keywords that indicate meaningful phrases
-        var domainKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "waste", "reduction", "rate", "formula", "carbon", "footprint",
-            "demand", "forecast", "inventory", "turnover", "safety", "stock",
-            "reorder", "point", "economic", "order", "quantity", "capacity",
-            "utilization", "productivity", "equipment", "effectiveness",
-            "total", "cost", "ownership", "unit", "quality", "defect",
-            "customer", "satisfaction", "delivery", "performance", "risk",
-            "score", "mitigation", "water", "usage", "efficiency", "moving",
-            "average", "exponential", "smoothing", "acceptable", "level","interact"
-        };
-
-        // At least one word should be a domain keyword
-        return words.Any(w => domainKeywords.Contains(w));
     }
 }

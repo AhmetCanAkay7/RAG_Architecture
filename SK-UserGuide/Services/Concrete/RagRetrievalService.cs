@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
 using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.LLM;
@@ -89,15 +90,13 @@ public class RagRetrievalService : IRagRetrievalService
         string prompt,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var settings = new PromptExecutionSettings
+        var settings = new OpenAIPromptExecutionSettings
         {
-            ExtensionData = new Dictionary<string, object>
-            {
-                ["max_tokens"] = 256,
-                ["temperature"] = 0.2,
-                ["top_p"] = 0.85
-            }
+            MaxTokens = 256,
+            Temperature = 0.2,
+            TopP=0.85
         };
+
         //kernel, LLM ile canlı baglantı kurar, LLM her token urettiginde bu foreach dongusu bir tur doner.
         await foreach (var chunk in _kernel.InvokePromptStreamingAsync(prompt, new KernelArguments(settings), cancellationToken: cancellationToken))
         {

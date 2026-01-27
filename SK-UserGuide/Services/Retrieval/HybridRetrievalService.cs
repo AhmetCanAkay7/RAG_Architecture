@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -118,16 +118,24 @@ public class HybridRetrievalService : IHybridRetrievalService
 
             // Scroll through collection to get candidates
             // We need to fetch enough candidates to find keyword matches
-            string? offset = null;
+            ulong? offset = null;
             int fetchedCount = 0;
             const int scrollBatchSize = 50;
             const int maxFetchLimit = 200; // Safety limit to avoid fetching entire collection
 
             do
             {
-                object scrollRequest = offset == null
-                    ? new { limit = scrollBatchSize, with_payload = true, with_vector = false }
-                    : new { limit = scrollBatchSize, with_payload = true, with_vector = false, offset = offset };
+                var scrollRequest = new Dictionary<string, object>
+                {
+                    ["limit"] = scrollBatchSize,
+                    ["with_payload"] = true,
+                    ["with_vector"] = false
+                };
+
+                if (offset.HasValue)
+                {
+                    scrollRequest["offset"] = offset.Value;  
+                }
 
                 var response = await _httpClient.PostAsJsonAsync(
                     $"/collections/{_settings.Collection}/points/scroll",
@@ -191,7 +199,7 @@ public class HybridRetrievalService : IHybridRetrievalService
                 if (allMatches.Count >= SparseCandidateLimit || fetchedCount >= maxFetchLimit)
                     break;
 
-                offset = result.Result.NextPageOffset;
+                offset = ParseNextPageOffset(result.Result.NextPageOffset);
 
             } while (offset != null);
 
@@ -220,6 +228,19 @@ public class HybridRetrievalService : IHybridRetrievalService
             Console.WriteLine($"[Sparse Search] Stack trace: {ex.StackTrace}");
             return new List<QdrantRestClient.SearchResult>();
         }
+    }
+
+    private ulong? ParseNextPageOffset(JsonElement? element)
+    {
+        if (element == null || element.Value.ValueKind == JsonValueKind.Null)
+            return null;
+
+        return element.Value.ValueKind switch
+        {
+            JsonValueKind.Number => element.Value.GetUInt64(),
+            JsonValueKind.String when ulong.TryParse(element.Value.GetString(), out var id) => id,
+            _ => null
+        };
     }
 
     /// <summary>
@@ -441,7 +462,7 @@ public class HybridRetrievalService : IHybridRetrievalService
         public List<ScrollPoint>? Points { get; set; }
 
         [JsonPropertyName("next_page_offset")]
-        public string? NextPageOffset { get; set; }
+        public JsonElement? NextPageOffset { get; set; }
     }
 
     private class ScrollPoint
