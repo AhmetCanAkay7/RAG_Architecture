@@ -10,6 +10,19 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// CORS policy for API access from other local projects
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("LocalApi", policy =>
+    {
+        policy.SetIsOriginAllowed(origin =>
+                new Uri(origin).Host == "localhost" ||
+                new Uri(origin).Host == "127.0.0.1")
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
 // Add services to the container
 builder.Services.AddControllersWithViews()
     .AddJsonOptions(options =>
@@ -64,7 +77,6 @@ builder.Services.AddScoped<TxtTextExtractor>();
 builder.Services.AddScoped<DocxTextExtractor>();
 builder.Services.AddScoped<StructuralChunker>();
 builder.Services.AddScoped<DocumentMetadataBuilder>();
-builder.Services.AddHttpClient<IVersionManager, VersionManager>();
 builder.Services.AddHttpClient<IQdrantIngestionRepository, QdrantIngestionRepository>();
 builder.Services.AddScoped<IDocumentIngestionOrchestrator, DocumentIngestionOrchestrator>();
 
@@ -80,6 +92,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseRouting();
+app.UseCors("LocalApi");
 app.UseAuthorization();
 
 app.MapStaticAssets();
@@ -87,6 +100,6 @@ app.MapStaticAssets();
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}")
-    .WithStaticAssets();    
+    .WithStaticAssets();
 
 app.Run();

@@ -201,13 +201,29 @@ public class StructuralChunker
             // Single block exceeds max - split by sentences
             if (blockTokens > TargetTokenMax)
             {
-                if (currentChunk.HasContent)
+                // Check if current chunk only contains a heading (small content that shouldn't be alone)
+                string headingPrefix = "";
+                if (currentChunk.HasContent && currentChunk.TokenCount < 60)
+                {
+                    // Preserve heading to prepend to first split chunk
+                    headingPrefix = currentChunk.GetText().Trim() + "\n\n";
+                    currentChunk = new ChunkBuilder(CountTokens);
+                }
+                else if (currentChunk.HasContent)
                 {
                     chunks.Add(currentChunk.Build(chunkIndex++, _contextBuilder.GetFullSectionPath()));
                     currentChunk = new ChunkBuilder(CountTokens);
                 }
 
                 var splitChunks = SplitLongParagraph(block.Text, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath(), block.Page, ref chunkIndex);
+
+                // Prepend heading to first split chunk if we saved one
+                if (!string.IsNullOrEmpty(headingPrefix) && splitChunks.Count > 0)
+                {
+                    var first = splitChunks[0];
+                    splitChunks[0] = first with { Text = headingPrefix + first.Text };
+                }
+
                 chunks.AddRange(splitChunks);
                 continue;
             }
@@ -732,26 +748,30 @@ public class StructuralChunker
     }
 
     /// <summary>
-    /// Get overlap text from the end of a chunk.
+    /// Get overlap text from the end of a chunk using the real tokenizer.
     /// </summary>
     private string GetOverlapText(string text)
     {
         if (string.IsNullOrEmpty(text)) return "";
 
-        // Calculate target overlap size based on tokens
-        var targetTokens = OverlapTokens;
-        var charsPerToken = 4.0;
-        var targetChars = (int)(targetTokens * charsPerToken);
+        var totalTokens = CountTokens(text);
+        if (totalTokens <= OverlapTokens) return "";
 
-        if (text.Length <= targetChars) return "";
+        // Estimate starting position based on average chars per token
+        var avgCharsPerToken = (double)text.Length / totalTokens;
+        var estimatedChars = (int)(OverlapTokens * avgCharsPerToken * 1.2); // 20% buffer
+        estimatedChars = Math.Min(estimatedChars, text.Length - 1);
 
-        var lastPart = text[^targetChars..];
+        var lastPart = text[^estimatedChars..];
 
         // Try to start from sentence boundary
         var sentenceEnd = lastPart.IndexOfAny(new[] { '.', '!', '?' });
         if (sentenceEnd >= 0 && sentenceEnd < lastPart.Length - 10)
         {
-            return lastPart[(sentenceEnd + 1)..].Trim();
+            var candidate = lastPart[(sentenceEnd + 1)..].Trim();
+            // Verify token count is reasonable (not too much over target)
+            if (CountTokens(candidate) <= OverlapTokens * 1.3)
+                return candidate;
         }
 
         // Start from word boundary
@@ -915,6 +935,11 @@ public class StructuralChunker
                 _hasOverlap = true;
             }
         }
+
+        /// <summary>
+        /// Get current text content.
+        /// </summary>
+        public string GetText() => _text.ToString();
 
         /// <summary>
         /// Append raw text without context injection (for merging headings/lists into existing chunk).

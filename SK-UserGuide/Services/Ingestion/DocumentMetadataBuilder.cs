@@ -20,9 +20,9 @@ public class DocumentMetadataBuilder
     /// <summary>
     /// Generate a unique point ID for Qdrant.
     /// </summary>
-    public ulong GeneratePointId(string docId, int version, int chunkIndex)
+    public ulong GeneratePointId(string docId, int chunkIndex)
     {
-        var combined = $"{docId}:{version}:{chunkIndex}";
+        var combined = $"{docId}:{chunkIndex}";
         using var sha = SHA256.Create();
         var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(combined));
         return BitConverter.ToUInt64(hash, 0);
@@ -35,7 +35,6 @@ public class DocumentMetadataBuilder
         string docId,
         string docName,
         string sourceType,
-        int version,
         ChunkResult chunk)
     {
         return new ChunkPayload
@@ -43,7 +42,6 @@ public class DocumentMetadataBuilder
             DocId = docId,
             DocName = docName,
             SourceType = sourceType,
-            Version = version,
             CreatedAt = DateTime.UtcNow,
             ChunkIndex = chunk.Index,
             Text = chunk.Text,

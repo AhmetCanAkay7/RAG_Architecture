@@ -13,7 +13,6 @@ public record ScoredChunk
     public string? SectionTitle { get; init; }
     public int? Page { get; init; }
     public int? ChunkIndex { get; init; }
-    public int? Version { get; init; }
     public int EstimatedTokens { get; init; }
 }
 public record RetrievalResult

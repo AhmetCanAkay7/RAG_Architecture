@@ -68,8 +68,41 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
 
         // Create payload indexes for filtering
         await CreatePayloadIndexAsync("doc_id", "keyword");
-        await CreatePayloadIndexAsync("version", "integer");
         await CreatePayloadIndexAsync("section_title", "keyword");
+
+        // Create full-text index for sparse search
+        await CreateFullTextIndexAsync("text");
+    }
+
+    /// <summary>
+    /// Create a full-text index for text search.
+    /// </summary>
+    private async Task CreateFullTextIndexAsync(string fieldName)
+    {
+        try
+        {
+            var indexRequest = new
+            {
+                field_name = fieldName,
+                field_schema = new
+                {
+                    type = "text",
+                    tokenizer = "word",
+                    min_token_len = 2,
+                    max_token_len = 40,
+                    lowercase = true
+                }
+            };
+
+            await _httpClient.PutAsJsonAsync(
+                $"/collections/{_settings.Collection}/index",
+                indexRequest,
+                _jsonOptions);
+        }
+        catch
+        {
+            // Index creation may fail if already exists - that's ok
+        }
     }
 
     /// <summary>
@@ -103,7 +136,6 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
         string docId,
         string docName,
         string sourceType,
-        int version,
         List<ChunkResult> chunks,
         List<float[]> embeddings)
     {
@@ -114,8 +146,8 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
         for (int i = 0; i < chunks.Count; i++)
         {
             var chunk = chunks[i];
-            var payload = _metadataBuilder.BuildPayload(docId, docName, sourceType, version, chunk);
-            var pointId = _metadataBuilder.GeneratePointId(docId, version, chunk.Index);
+            var payload = _metadataBuilder.BuildPayload(docId, docName, sourceType, chunk);
+            var pointId = _metadataBuilder.GeneratePointId(docId, chunk.Index);
 
             points.Add(new
             {
@@ -126,7 +158,6 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
                     doc_id = payload.DocId,
                     doc_name = payload.DocName,
                     source_type = payload.SourceType,
-                    version = payload.Version,
                     created_at = payload.CreatedAt.ToString("o"),
                     chunk_index = payload.ChunkIndex,
                     text = payload.Text,
@@ -162,7 +193,6 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
 
     /// <summary>
     /// Delete all points for a document by doc_id.
-    /// Removes ALL versions of the document.
     /// </summary>
     public async Task<int> DeleteByDocIdAsync(string docId)
     {
@@ -173,26 +203,6 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
                 must = new[]
                 {
                     new { key = "doc_id", match = new { value = docId } }
-                }
-            }
-        };
-
-        return await ExecuteDeleteAsync(deleteRequest);
-    }
-
-    /// <summary>
-    /// Delete points for a specific document version.
-    /// </summary>
-    public async Task<int> DeleteByDocIdAndVersionAsync(string docId, int version)
-    {
-        var deleteRequest = new
-        {
-            filter = new
-            {
-                must = new object[]
-                {
-                    new { key = "doc_id", match = new { value = docId } },
-                    new { key = "version", match = new { value = version } }
                 }
             }
         };
@@ -220,7 +230,7 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
     }
 
     /// <summary>
-    /// Get list of all documents in the collection with their versions.
+    /// Get list of all documents in the collection.
     /// </summary>
     public async Task<List<DocumentInfo>> GetAllDocumentsAsync()
     {
@@ -232,7 +242,7 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
             var scrollRequest = new
             {
                 limit = 100,
-                with_payload = new { include = new[] { "doc_id", "doc_name", "version", "created_at" } }
+                with_payload = new { include = new[] { "doc_id", "doc_name", "created_at" } }
             };
 
             string? nextOffset = null;
@@ -259,7 +269,6 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
                 {
                     var docId = GetPayloadString(point.Payload, "doc_id");
                     var docName = GetPayloadString(point.Payload, "doc_name");
-                    var version = GetPayloadInt(point.Payload, "version") ?? 1;
 
                     if (!string.IsNullOrEmpty(docId))
                     {
@@ -269,15 +278,12 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
                             {
                                 DocId = docId,
                                 DocName = docName,
-                                LatestVersion = version,
                                 ChunkCount = 0
                             };
                             documents[docId] = info;
                         }
 
                         info.ChunkCount++;
-                        if (version > info.LatestVersion)
-                            info.LatestVersion = version;
                     }
                 }
 
@@ -310,9 +316,6 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
                 throw new HttpRequestException($"Qdrant delete failed: {response.StatusCode} - {error}");
             }
 
-            // Parse response to get deleted count
-            var responseJson = await response.Content.ReadAsStringAsync();
-            // Qdrant doesn't return count directly, estimate based on success
             return 1; // Return 1 to indicate success
         }
         catch (HttpRequestException)
@@ -330,13 +333,6 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
         if (payload?.TryGetValue(key, out var element) == true)
             return element.ValueKind == JsonValueKind.String ? element.GetString() ?? "" : "";
         return "";
-    }
-
-    private int? GetPayloadInt(Dictionary<string, JsonElement>? payload, string key)
-    {
-        if (payload?.TryGetValue(key, out var element) == true && element.ValueKind == JsonValueKind.Number)
-            return element.GetInt32();
-        return null;
     }
 
     public void Dispose()
@@ -377,6 +373,5 @@ public class DocumentInfo
 {
     public required string DocId { get; init; }
     public string DocName { get; set; } = "";
-    public int LatestVersion { get; set; }
     public int ChunkCount { get; set; }
 }

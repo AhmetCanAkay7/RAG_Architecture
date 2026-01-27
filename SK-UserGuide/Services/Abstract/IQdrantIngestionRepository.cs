@@ -11,10 +11,8 @@ public interface IQdrantIngestionRepository
         string docId,
         string docName,
         string sourceType,
-        int version,
         List<ChunkResult> chunks,
         List<float[]> vectors);
     Task<int> DeleteByDocIdAsync(string docId);
-    Task<int> DeleteByDocIdAndVersionAsync(string docId, int version);
     Task<List<DocumentInfo>> GetAllDocumentsAsync();
 }

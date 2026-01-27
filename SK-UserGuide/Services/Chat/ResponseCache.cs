@@ -60,31 +60,6 @@ public class ResponseCache
     }
 
     /// <summary>
-    /// Invalidate all cache entries (e.g., after document update).
-    /// </summary>
-    public void Clear()
-    {
-        _cache.Clear();
-    }
-
-    /// <summary>
-    /// Get cache statistics.
-    /// </summary>
-    public CacheStats GetStats()
-    {
-        var now = DateTime.UtcNow;
-        var validEntries = _cache.Values.Count(c => now - c.CreatedAt < _entryLifetime);
-        var totalHits = _cache.Values.Sum(c => c.HitCount);
-
-        return new CacheStats
-        {
-            TotalEntries = _cache.Count,
-            ValidEntries = validEntries,
-            TotalHits = totalHits
-        };
-    }
-
-    /// <summary>
     /// Normalize question to cache key (lowercase, trimmed).
     /// </summary>
     private string NormalizeKey(string question)
@@ -117,9 +92,3 @@ public class ResponseCache
     }
 }
 
-public record CacheStats
-{
-    public int TotalEntries { get; init; }
-    public int ValidEntries { get; init; }
-    public int TotalHits { get; init; }
-}

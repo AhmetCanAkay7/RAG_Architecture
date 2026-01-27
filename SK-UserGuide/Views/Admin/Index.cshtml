@@ -50,27 +50,26 @@
 
                     @if (TempData["Error"] != null)
                     {
-                        <div class="alert alert-danger mt-4">
-                            <i class="bi bi-exclamation-triangle me-2"></i>
-                            <strong>Error:</strong> @TempData["Error"]
-                        </div>
+                            <div class="alert alert-danger mt-4">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                <strong>Error:</strong> @TempData["Error"]
+                            </div>
                     }
 
                     @if (TempData["Message"] != null)
                     {
-                        <div
-                            class="alert @(TempData["Success"]?.ToString() == "true" ? "alert-success" : "alert-info") mt-4">
-                            <i class="bi bi-check-circle me-2"></i>@TempData["Message"]
+                            <div
+                                class="alert @(TempData["Success"]?.ToString() == "true" ? "alert-success" : "alert-info") mt-4">
+                                <i class="bi bi-check-circle me-2"></i>@TempData["Message"]
                             @if (TempData["ChunkCount"] != null)
                             {
-                                <br>
-                                <small class="text-muted">
-                                    Chunks: @TempData["ChunkCount"] |
-                                    Version: @TempData["Version"] |
-                                    Time: @TempData["ProcessingTime"] ms
-                                </small>
+                                        <br>
+                                        <small class="text-muted">
+                                            Chunks: @TempData["ChunkCount"] |
+                                            Time: @TempData["ProcessingTime"] ms
+                                        </small>
                             }
-                        </div>
+                            </div>
                     }
                 </div>
             </div>
@@ -88,53 +87,49 @@
                 <div class="card-body">
                     @if (documents.Count == 0)
                     {
-                        <div class="text-center text-muted py-4">
-                            <i class="bi bi-inbox display-4"></i>
-                            <p class="mt-3">No documents uploaded yet.</p>
-                        </div>
+                            <div class="text-center text-muted py-4">
+                                <i class="bi bi-inbox display-4"></i>
+                                <p class="mt-3">No documents uploaded yet.</p>
+                            </div>
                     }
                     else
                     {
-                        <div class="table-responsive">
-                            <table class="table table-hover" id="documentsTable">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Document Name</th>
-                                        <th class="text-center">Version</th>
-                                        <th class="text-center">Chunk Count</th>
-                                        <th class="text-center">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
+                            <div class="table-responsive">
+                                <table class="table table-hover" id="documentsTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Document Name</th>
+                                            <th class="text-center">Chunk Count</th>
+                                            <th class="text-center">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
                                     @foreach (var doc in documents)
                                     {
-                                        <tr data-doc-id="@doc.DocId">
-                                            <td>
-                                                <i class="bi bi-file-earmark-text text-primary me-2"></i>
+                                                <tr data-doc-id="@doc.DocId">
+                                                    <td>
+                                                        <i class="bi bi-file-earmark-text text-primary me-2"></i>
                                                 @doc.DocName
-                                                <br>
-                                                <small class="text-muted">ID: @doc.DocId</small>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="badge bg-info">v@doc.LatestVersion</span>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="badge bg-secondary">@doc.ChunkCount chunks</span>
-                                            </td>
-                                            <td class="text-center">
-                                                <button class="btn btn-danger btn-sm"
-                                                    onclick="deleteDocument('@doc.DocId', '@doc.DocName')">
-                                                    <i class="bi bi-trash"></i> Delete
-                                                </button>
-                                            </td>
-                                        </tr>
+                                                        <br>
+                                                        <small class="text-muted">ID: @doc.DocId</small>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <span class="badge bg-secondary">@doc.ChunkCount chunks</span>
+                                                    </td>
+                                                    <td class="text-center">
+                                                        <button class="btn btn-danger btn-sm"
+                                                            onclick="deleteDocument('@doc.DocId', '@doc.DocName')">
+                                                            <i class="bi bi-trash"></i> Delete
+                                                        </button>
+                                                    </td>
+                                                </tr>
                                     }
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="text-muted small mt-2">
-                            Total: @documents.Count documents, @documents.Sum(d => d.ChunkCount) chunks
-                        </div>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="text-muted small mt-2">
+                                Total: @documents.Count documents, @documents.Sum(d => d.ChunkCount) chunks
+                            </div>
                     }
                 </div>
             </div>
@@ -153,7 +148,7 @@
             </div>
             <div class="modal-body">
                 <p>Are you sure you want to delete <strong id="deleteDocName"></strong>?</p>
-                <p class="text-muted small">This action cannot be undone and all versions will be deleted.</p>
+                <p class="text-muted small">This action cannot be undone.</p>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -166,136 +161,136 @@
 </div>
 
 @section Scripts {
-    <script>
-        const fileInput = document.getElementById('fileInput');
-        const selectedFile = document.getElementById('selectedFile');
-        const fileName = document.getElementById('fileName');
-        const uploadBtn = document.getElementById('uploadBtn');
-        const dropZone = document.querySelector('.drop-zone');
+        <script>
+            const fileInput = document.getElementById('fileInput');
+            const selectedFile = document.getElementById('selectedFile');
+            const fileName = document.getElementById('fileName');
+            const uploadBtn = document.getElementById('uploadBtn');
+            const dropZone = document.querySelector('.drop-zone');
 
-        let pendingDeleteDocId = null;
+            let pendingDeleteDocId = null;
 
-        fileInput.addEventListener('change', function (e) {
-            const file = e.target.files[0];
-            if (file) {
-                showSelectedFile(file);
-            }
-        });
-
-        dropZone.addEventListener('dragover', function (e) {
-            e.preventDefault();
-            dropZone.classList.add('drag-over');
-        });
-
-        dropZone.addEventListener('dragleave', function (e) {
-            e.preventDefault();
-            dropZone.classList.remove('drag-over');
-        });
-
-        dropZone.addEventListener('drop', function (e) {
-            e.preventDefault();
-            dropZone.classList.remove('drag-over');
-
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                const file = files[0];
-                const ext = file.name.toLowerCase();
-                if (ext.endsWith('.txt') || ext.endsWith('.pdf') || ext.endsWith('.docx')) {
-                    // DataTransfer API kullanarak dosyayı input'a ata
-                    const dataTransfer = new DataTransfer();
-                    dataTransfer.items.add(file);
-                    fileInput.files = dataTransfer.files;
+            fileInput.addEventListener('change', function (e) {
+                const file = e.target.files[0];
+                if (file) {
                     showSelectedFile(file);
-                } else {
-                    alert('Only .txt, .pdf and .docx files are supported.');
                 }
-            }
-        });
+            });
 
-        function showSelectedFile(file) {
-            fileName.textContent = file.name;
-            selectedFile.style.display = 'block';
-            uploadBtn.disabled = false;
-        }
-
-        function clearFile() {
-            fileInput.value = '';
-            selectedFile.style.display = 'none';
-            uploadBtn.disabled = true;
-        }
-
-        document.getElementById('uploadForm').addEventListener('submit', function (e) {
-            // Dosya kontrolü
-            if (!fileInput.files || fileInput.files.length === 0) {
+            dropZone.addEventListener('dragover', function (e) {
                 e.preventDefault();
-                alert('Please select a file.');
-                return false;
-            }
+                dropZone.classList.add('drag-over');
+            });
 
-            uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading...';
-            uploadBtn.disabled = true;
-        });
+            dropZone.addEventListener('dragleave', function (e) {
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
+            });
 
-        function deleteDocument(docId, docName) {
-            pendingDeleteDocId = docId;
-            document.getElementById('deleteDocName').textContent = docName;
-            new bootstrap.Modal(document.getElementById('deleteModal')).show();
-        }
+            dropZone.addEventListener('drop', function (e) {
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
 
-        async function confirmDelete() {
-            if (!pendingDeleteDocId) return;
-
-            const btn = document.getElementById('confirmDeleteBtn');
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting...';
-            btn.disabled = true;
-
-            try {
-                const response = await fetch('@Url.Action("DeleteDocument", "Admin")', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `docId=${encodeURIComponent(pendingDeleteDocId)}`
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    const row = document.querySelector(`tr[data-doc-id="${pendingDeleteDocId}"]`);
-                    if (row) {
-                        row.remove();
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const file = files[0];
+                    const ext = file.name.toLowerCase();
+                    if (ext.endsWith('.txt') || ext.endsWith('.pdf') || ext.endsWith('.docx')) {
+                        // DataTransfer API kullanarak dosyayı input'a ata
+                        const dataTransfer = new DataTransfer();
+                        dataTransfer.items.add(file);
+                        fileInput.files = dataTransfer.files;
+                        showSelectedFile(file);
+                    } else {
+                        alert('Only .txt, .pdf and .docx files are supported.');
                     }
-                    bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
-                    showToast('Document deleted successfully.', 'success');
-                } else {
-                    showToast(result.message || 'Delete error.', 'danger');
                 }
-            } catch (error) {
-                showToast('An error occurred: ' + error.message, 'danger');
-            } finally {
-                btn.innerHTML = '<i class="bi bi-trash me-1"></i>Delete';
-                btn.disabled = false;
-                pendingDeleteDocId = null;
+            });
+
+            function showSelectedFile(file) {
+                fileName.textContent = file.name;
+                selectedFile.style.display = 'block';
+                uploadBtn.disabled = false;
             }
-        }
 
-        function refreshDocuments() {
-            location.reload();
-        }
-
-        function showToast(message, type) {
-            const toast = document.createElement('div');
-            toast.className = `alert alert-${type} position-fixed bottom-0 end-0 m-3`;
-            toast.style.zIndex = '9999';
-            toast.innerHTML = message;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
-        }
-
-        document.addEventListener('DOMContentLoaded', function () {
-            if (fileInput.files.length > 0) {
-                showSelectedFile(fileInput.files[0]);
+            function clearFile() {
+                fileInput.value = '';
+                selectedFile.style.display = 'none';
+                uploadBtn.disabled = true;
             }
-        });
-    </script>
+
+            document.getElementById('uploadForm').addEventListener('submit', function (e) {
+                // Dosya kontrolü
+                if (!fileInput.files || fileInput.files.length === 0) {
+                    e.preventDefault();
+                    alert('Please select a file.');
+                    return false;
+                }
+
+                uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Uploading...';
+                uploadBtn.disabled = true;
+            });
+
+            function deleteDocument(docId, docName) {
+                pendingDeleteDocId = docId;
+                document.getElementById('deleteDocName').textContent = docName;
+                new bootstrap.Modal(document.getElementById('deleteModal')).show();
+            }
+
+            async function confirmDelete() {
+                if (!pendingDeleteDocId) return;
+
+                const btn = document.getElementById('confirmDeleteBtn');
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting...';
+                btn.disabled = true;
+
+                try {
+                    const response = await fetch('@Url.Action("DeleteDocument", "Admin")', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `docId=${encodeURIComponent(pendingDeleteDocId)}`
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        const row = document.querySelector(`tr[data-doc-id="${pendingDeleteDocId}"]`);
+                        if (row) {
+                            row.remove();
+                        }
+                        bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+                        showToast('Document deleted successfully.', 'success');
+                    } else {
+                        showToast(result.message || 'Delete error.', 'danger');
+                    }
+                } catch (error) {
+                    showToast('An error occurred: ' + error.message, 'danger');
+                } finally {
+                    btn.innerHTML = '<i class="bi bi-trash me-1"></i>Delete';
+                    btn.disabled = false;
+                    pendingDeleteDocId = null;
+                }
+            }
+
+            function refreshDocuments() {
+                location.reload();
+            }
+
+            function showToast(message, type) {
+                const toast = document.createElement('div');
+                toast.className = `alert alert-${type} position-fixed bottom-0 end-0 m-3`;
+                toast.style.zIndex = '9999';
+                toast.innerHTML = message;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                if (fileInput.files.length > 0) {
+                    showSelectedFile(fileInput.files[0]);
+                }
+            });
+        </script>
 }
 
 <style>

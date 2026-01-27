@@ -39,7 +39,6 @@ namespace SK_UserGuide.Controllers
                 TempData["Message"] = result.Message;
                 TempData["Success"] = "true";
                 TempData["ChunkCount"] = result.ChunkCount.ToString();
-                TempData["Version"] = result.Version.ToString();
                 TempData["ProcessingTime"] = result.ProcessingTimeMs.ToString();
             }
             else
@@ -67,7 +66,7 @@ namespace SK_UserGuide.Controllers
         }
 
         /// <summary>
-        /// Delete a document by doc_id (removes ALL versions).
+        /// Delete a document by doc_id.
         /// </summary>
         [HttpPost]
         public async Task<IActionResult> DeleteDocument(string docId)
@@ -81,28 +80,6 @@ namespace SK_UserGuide.Controllers
             {
                 await _qdrantRepo.DeleteByDocIdAsync(docId);
                 return Json(new { success = true, message = "Document deleted successfully." });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { success = false, message = $"Delete error: {ex.Message}" });
-            }
-        }
-
-        /// <summary>
-        /// Delete a specific version of a document.
-        /// </summary>
-        [HttpPost]
-        public async Task<IActionResult> DeleteDocumentVersion(string docId, int version)
-        {
-            if (string.IsNullOrWhiteSpace(docId))
-            {
-                return Json(new { success = false, message = "DocId is required." });
-            }
-
-            try
-            {
-                await _qdrantRepo.DeleteByDocIdAndVersionAsync(docId, version);
-                return Json(new { success = true, message = $"Document version {version} deleted successfully." });
             }
             catch (Exception ex)
             {

@@ -56,7 +56,6 @@ public record IngestionResult
 {
     public bool Success { get; init; }
     public string? DocId { get; init; }
-    public int? Version { get; init; }
     public int? ChunkCount { get; init; }
     public long? ProcessingTimeMs { get; init; }
     public string Message { get; init; } = "";
