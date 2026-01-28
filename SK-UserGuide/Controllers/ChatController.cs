@@ -3,9 +3,6 @@ using SK_UserGuide.Services.Abstract;
 
 namespace SK_UserGuide.Controllers;
 
-/// <summary>
-/// Chat controller with streaming SSE endpoint.
-/// </summary>
 public class ChatController : Controller
 {
     private readonly IRagService _ragService;

@@ -17,12 +17,6 @@ public partial class RagApiController : ControllerBase
         _logger = logger;
     }
 
-
-    /// <summary>
-    /// Streaming endpoint - Returns response token by token via Server-Sent Events.
-    /// Use this for real-time chat UI experience.
-    /// Sources are sent as a separate structured event at the end.
-    /// </summary>
     [HttpPost("ask/stream")]
     public async Task AskStreaming([FromBody] RagQuestionRequest request, CancellationToken cancellationToken)
     {
@@ -45,6 +39,7 @@ public partial class RagApiController : ControllerBase
             var fullResponse = new System.Text.StringBuilder();
             var sourcesStarted = false;
             var sourcesMarker = "---\n📚 **Sources:**";
+            var sentLength = 0; // Track what we've actually sent
 
             // Stream each token as it arrives, but stop when sources section begins
             await foreach (var chunk in _ragService.AskStreamingAsync(request.Question, cancellationToken))
@@ -61,12 +56,10 @@ public partial class RagApiController : ControllerBase
                     if (!sourcesStarted)
                     {
                         sourcesStarted = true;
-                        // Send any remaining text before sources marker
-                        var beforeSources = currentText[..sourcesIndex].TrimEnd();
-                        var alreadySent = currentText.Length - chunk.Length;
-                        if (sourcesIndex > alreadySent)
+                        // Send any remaining text before sources marker that hasn't been sent yet
+                        if (sourcesIndex > sentLength)
                         {
-                            var remaining = beforeSources[alreadySent..];
+                            var remaining = currentText[sentLength..sourcesIndex].TrimEnd();
                             if (!string.IsNullOrEmpty(remaining))
                             {
                                 await WriteSSEAsync("chunk", new { text = remaining }, cancellationToken);
@@ -79,6 +72,7 @@ public partial class RagApiController : ControllerBase
                 {
                     // Normal chunk - stream it
                     await WriteSSEAsync("chunk", new { text = chunk }, cancellationToken);
+                    sentLength = currentText.Length; // Update sent position
                 }
             }
 
@@ -106,10 +100,6 @@ public partial class RagApiController : ControllerBase
             await WriteSSEAsync("done", new { success = false }, cancellationToken);
         }
     }
-
-    /// <summary>
-    /// Write Server-Sent Event to response stream.
-    /// </summary>
     private async Task WriteSSEAsync(string eventType, object? data, CancellationToken cancellationToken)
     {
         var json = data is null ? "{}" : System.Text.Json.JsonSerializer.Serialize(data);
@@ -173,18 +163,11 @@ public partial class RagApiController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Health check endpoint.
-    /// </summary>
     [HttpGet("health")]
     public IActionResult Health()
     {
         return Ok(new { status = "healthy", timestamp = DateTime.UtcNow });
     }
-
-    /// <summary>
-    /// Extract source information from response text.
-    /// </summary>
     private static List<SourceInfo> ExtractSources(string response)
     {
         var sources = new List<SourceInfo>();
@@ -250,9 +233,6 @@ public partial class RagApiController : ControllerBase
     [System.Text.RegularExpressions.GeneratedRegex(@"^\[(\d+)\]\s*(.+)$")]
     private static partial System.Text.RegularExpressions.Regex SourceLineRegex();
 
-    /// <summary>
-    /// Remove sources section from answer for clean API response.
-    /// </summary>
     private static string CleanAnswer(string response)
     {
         var sourcesIndex = response.IndexOf("**Sources:**", StringComparison.OrdinalIgnoreCase);

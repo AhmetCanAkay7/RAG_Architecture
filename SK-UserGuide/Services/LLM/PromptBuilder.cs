@@ -8,7 +8,7 @@ namespace SK_UserGuide.Services.LLM;
 public class PromptBuilder
 {
     // Simplified English prompt for optimal LLM performance
-    private const string SystemPrompt = @"Use only the context below and answer only the question below. Create and answer only one new question.";
+    private const string SystemPrompt = @"Use only the context below and answer only the question below. Do not create any different question!";
 
     /// <summary>
     /// Build the complete prompt for LLM.
