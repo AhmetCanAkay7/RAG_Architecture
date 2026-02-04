@@ -11,6 +11,7 @@ namespace SK_UserGuide.Services.Concrete;
 /// <summary>
 /// RAG retrieval service with streaming responses.
 /// Supports: Hybrid mode (LLM + context) and ContextOnly mode (no LLM).
+/// Optimized for Qwen3:4b model.
 /// </summary>
 public class RagRetrievalService : IRagRetrievalService
 {
@@ -20,7 +21,7 @@ public class RagRetrievalService : IRagRetrievalService
     private readonly PromptBuilder _promptBuilder;
     private readonly string _responseMode;
 
-    private const string ChatSystemPrompt = "You are a helpful assistant. Respond briefly in English.";
+    private const string ChatSystemPrompt = "You are a helpful assistant. Respond briefly and professionally in English.";
 
     public RagRetrievalService(
         IHybridRetrievalService hybridRetrieval,
@@ -92,12 +93,11 @@ public class RagRetrievalService : IRagRetrievalService
     {
         var settings = new OpenAIPromptExecutionSettings
         {
-            MaxTokens = 256,
-            Temperature = 0.2,
-            TopP=0.85
+            MaxTokens = 200,        // Shorter = faster
+            Temperature = 0.1,      // Lower = more deterministic
+            TopP = 0.85
         };
 
-        //kernel, LLM ile canlı baglantı kurar, LLM her token urettiginde bu foreach dongusu bir tur doner.
         await foreach (var chunk in _kernel.InvokePromptStreamingAsync(prompt, new KernelArguments(settings), cancellationToken: cancellationToken))
         {
             var text = chunk.ToString();

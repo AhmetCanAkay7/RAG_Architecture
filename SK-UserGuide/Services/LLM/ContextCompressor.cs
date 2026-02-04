@@ -12,6 +12,10 @@ public class ContextCompressor
     private const int TargetTokenBudget = 400;
     private const int MaxSentencesPerChunk = 5;
     private const int MinSentenceLength = 15;
+    
+    // Summary settings - increased for more context
+    private const int SummaryMaxSentences = 6;
+    private const int SummaryTargetTokens = 250;
 
     /// <summary>
     /// Compress chunks by extracting relevant sentences.
@@ -48,7 +52,7 @@ public class ContextCompressor
                     DocName = chunk.DocName,
                     Page = chunk.Page,
                     Section = chunk.SectionTitle,
-                    Language = "EN", // Default to English
+                    Language = "EN",
                     OriginalScore = chunk.Score
                 });
             }
@@ -61,11 +65,15 @@ public class ContextCompressor
         // 4. Merge consecutive chunks from same section
         result.Items = MergeConsecutiveChunks(result.Items);
 
+        // 5. Generate enhanced summary
         result.Summary = GenerateSummary(result.Items, questionKeywords);
 
         return result;
     }
 
+    /// <summary>
+    /// Generate summary with more context (6 sentences, token-budgeted).
+    /// </summary>
     private string GenerateSummary(List<ContextItem> items, HashSet<string> questionKeywords)
     {
         if (items.Count == 0)
@@ -80,19 +88,47 @@ public class ContextCompressor
             foreach (var sentence in sentences)
             {
                 var score = CalculateKeywordOverlap(sentence, questionKeywords);
-                allSentences.Add((sentence, score, i + 1));
+                // Boost first sentence of each chunk (topic sentence)
+                var isFirstSentence = sentence == sentences.FirstOrDefault();
+                var adjustedScore = isFirstSentence ? score + 0.1 : score;
+                
+                allSentences.Add((sentence, adjustedScore, i + 1));
             }
         }
 
-        // Take top 3 sentences
-        var topSentences = allSentences
-            .OrderByDescending(x => x.Score)
-            .Take(3)
+        // Take top sentences within token budget
+        var selectedSentences = new List<(string Sentence, int Index)>();
+        var currentTokens = 0;
+
+        foreach (var item in allSentences.OrderByDescending(x => x.Score))
+        {
+            var sentenceTokens = EstimateTokens(item.Sentence);
+            
+            if (currentTokens + sentenceTokens > SummaryTargetTokens)
+                continue;
+                
+            if (selectedSentences.Count >= SummaryMaxSentences)
+                break;
+
+            selectedSentences.Add((item.Sentence, item.Index));
+            currentTokens += sentenceTokens;
+        }
+
+        // Order by original index for coherent reading
+        var orderedSentences = selectedSentences
             .OrderBy(x => x.Index)
             .Select(x => $"{x.Sentence} [{x.Index}]")
             .ToList();
 
-        return string.Join(" ", topSentences);
+        return string.Join(" ", orderedSentences);
+    }
+
+    /// <summary>
+    /// Estimate token count (rough: 1 token ≈ 4 chars).
+    /// </summary>
+    private static int EstimateTokens(string text)
+    {
+        return (int)Math.Ceiling(text.Length / 4.0);
     }
 
     private List<string> SplitToSentences(string text)
@@ -143,30 +179,20 @@ public class ContextCompressor
         return sentences.Where(s => scored.Contains(s)).ToList();
     }
 
-    /// <summary>
-    /// Detects if content should be preserved intact without sentence extraction.
-    /// Covers: numbered lists, code blocks, tables.
-    /// </summary>
     private bool ShouldPreserveIntact(List<string> sentences, string originalText)
     {
-        // 1. Numbered/Step List Detection
         if (IsNumberedList(sentences))
             return true;
 
-        // 2. Code Block Detection (fenced or brace-heavy)
         if (IsCodeBlock(originalText))
             return true;
 
-        // 3. Table Detection (markdown tables with | delimiters)
         if (IsTable(sentences))
             return true;
 
         return false;
     }
 
-    /// <summary>
-    /// Detects numbered/step lists.
-    /// </summary>
     private bool IsNumberedList(List<string> sentences)
     {
         if (sentences.Count < 3)
@@ -178,21 +204,15 @@ public class ContextCompressor
         return listPatternCount >= sentences.Count * 0.5;
     }
 
-    /// <summary>
-    /// Detects code blocks (fenced or brace-heavy content).
-    /// </summary>
     private bool IsCodeBlock(string text)
     {
-        // Fenced code blocks
         if (text.Contains("```"))
             return true;
 
-        // Brace-heavy content (likely code)
         var braceCount = text.Count(c => c == '{' || c == '}');
         if (braceCount >= 4)
             return true;
 
-        // Indented code (4+ spaces at start of multiple lines)
         var lines = text.Split('\n');
         var indentedCount = lines.Count(l => l.StartsWith("    ") || l.StartsWith("\t"));
         if (indentedCount >= lines.Length * 0.5 && indentedCount >= 3)
@@ -201,12 +221,8 @@ public class ContextCompressor
         return false;
     }
 
-    /// <summary>
-    /// Detects markdown tables.
-    /// </summary>
     private bool IsTable(List<string> sentences)
     {
-        // Table rows have multiple | characters
         var tableRowCount = sentences.Count(s =>
             s.Contains('|') && s.Count(c => c == '|') >= 2);
 
@@ -248,7 +264,6 @@ public class ContextCompressor
 
         foreach (var chunk in chunks)
         {
-            // Use first 100 chars as signature for dedup
             var signature = chunk.Text.Length > 100
                 ? chunk.Text[..100]
                 : chunk.Text;
@@ -276,7 +291,6 @@ public class ContextCompressor
         {
             var next = items[i];
 
-            // Merge if same doc + section
             if (current.DocName == next.DocName &&
                 current.Section == next.Section &&
                 current.Language == next.Language)
@@ -294,7 +308,6 @@ public class ContextCompressor
         }
         merged.Add(current);
 
-        // Re-index
         for (int i = 0; i < merged.Count; i++)
         {
             merged[i] = merged[i] with { Index = i + 1 };
