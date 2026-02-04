@@ -13,7 +13,7 @@ public static class KeywordExtractor
     private static readonly HashSet<string> EnglishStopwords = new(StringComparer.OrdinalIgnoreCase)
     {
         // Articles & Prepositions
-        "a", "an", "the", "in", "on", "at", "to", "for", "of", "with", "by", "from", "up", "about", "into", "over", "after", "through", "during", "before",
+        "a", "an", "the", "on", "at", "to", "for", "of", "with", "by", "from", "up", "about", "into", "over", "after", "through", "during", "before",
         // Additional Prepositions
         "above", "below", "between", "behind", "beside", "beyond", "within", "without", "along", "across", "around", "against", "among", "beneath", "toward", "towards", "upon", "under", "until", "unless", "via",
         // Conjunctions
@@ -104,6 +104,10 @@ public static class KeywordExtractor
         // Acronyms: API, SQL, PDF (All caps, 2-5 letters)
         var acronyms = Regex.Matches(text, @"\b[A-Z]{2,5}\b");
         patterns.AddRange(acronyms.Select(m => m.Value));
+
+        // Hyphenated compound words: sell-in, sell-out, e-commerce, etc.
+        var hyphenated = Regex.Matches(text, @"\b[a-zA-Z]+-[a-zA-Z]+\b");
+        patterns.AddRange(hyphenated.Select(m => m.Value.ToLower()));
 
         return patterns.Where(p => !string.IsNullOrWhiteSpace(p)).Distinct().ToList();
     }
