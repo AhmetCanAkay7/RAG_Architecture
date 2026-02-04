@@ -14,6 +14,8 @@ public static class KeywordExtractor
     {
         // Articles & Prepositions
         "a", "an", "the", "in", "on", "at", "to", "for", "of", "with", "by", "from", "up", "about", "into", "over", "after", "through", "during", "before",
+        // Additional Prepositions
+        "above", "below", "between", "behind", "beside", "beyond", "within", "without", "along", "across", "around", "against", "among", "beneath", "toward", "towards", "upon", "under", "until", "unless", "via",
         // Conjunctions
         "and", "or", "but", "because", "although", "however", "therefore", "if", "then", "than", "so", "as", "while", "since",
         // Pronouns & Verbs (auxiliary)
@@ -24,7 +26,17 @@ public static class KeywordExtractor
         "this", "that", "these", "those", "some", "any", "all", "more", "most", "less", "very", "just", "only", "also", "too",
         // Interaction/Filler Words (Crucial for cleaning chat queries)
         "please", "help", "tell", "say", "ask", "know", "how", "what", "why", "when", "where", "which", "who", "whom",
-        "show", "find", "search", "give", "need", "want", "look", "looking", "thanks", "thank", "hello", "hi", "hey"
+        "show", "find", "search", "give", "need", "want", "look", "looking", "thanks", "thank", "hello", "hi", "hey",
+        // Affirmative/Negative
+        "yes", "no", "not", "ok", "okay", "sure", "right", "wrong", "true", "false", "maybe", "perhaps",
+        // Time Words
+        "now", "today", "yesterday", "tomorrow", "always", "never", "often", "sometimes", "usually", "recently", "currently", "still", "yet", "already", "ago", "later", "earlier", "soon",
+        // Possessives & Demonstratives
+        "its", "whose", "own", "self", "such", "same", "other", "another", "each", "every", "either", "neither", "both", "few", "many", "much", "enough",
+        // Common Chat/Conversational
+        "sorry", "excuse", "pardon", "well", "actually", "basically", "simply", "really", "quite", "rather", "almost", "nearly", "completely", "totally", "exactly", "especially",
+        // Question Helpers (Contractions)
+        "dont", "doesnt", "didnt", "isnt", "arent", "wasnt", "werent", "wont", "wouldnt", "cant", "couldnt", "shouldnt", "havent", "hasnt", "hadnt"
     };
 
     public static List<string> Extract(string text, int maxKeywords = 15)
@@ -47,7 +59,7 @@ public static class KeywordExtractor
         var tokens = Regex.Split(text, @"[\s\p{P}]+")
             .Where(w => w.Length > 2)
             .Select(w => w.ToLower(CultureInfo.InvariantCulture))
-            .Where(w => !EnglishStopwords.Contains(w)) 
+            .Where(w => !EnglishStopwords.Contains(w))
             .Distinct()
             .ToList();
 
@@ -128,7 +140,7 @@ public static class KeywordExtractor
                 {
                     var w3 = words[i + 2].ToLower(CultureInfo.InvariantCulture);
                     bool w3IsContent = !EnglishStopwords.Contains(w3) && w3.Length > 2;
-                    
+
                     if (w3IsContent)
                     {
                         ngrams.Add($"{w1} {w2} {w3}");
