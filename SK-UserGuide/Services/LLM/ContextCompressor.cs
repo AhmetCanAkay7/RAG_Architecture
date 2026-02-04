@@ -9,7 +9,7 @@ namespace SK_UserGuide.Services.LLM;
 /// </summary>
 public class ContextCompressor
 {
-    private const int TargetTokenBudget = 400;
+    private const int TargetTokenBudget = 300;
     private const int MaxSentencesPerChunk = 5;
     private const int MinSentenceLength = 15;
     
@@ -243,7 +243,8 @@ public class ContextCompressor
             "the", "a", "an", "is", "are", "was", "were", "be", "been",
             "to", "of", "and", "or", "in", "on", "at", "for", "with",
             "what", "how", "why", "when", "where", "which", "who",
-            "this", "that", "it", "they", "we", "you", "i", "my", "your"
+            "this", "that", "it", "they", "we", "you", "i", "my", "your","Can",
+            "may","might","these","those"
         };
 
         return Tokenize(text.ToLowerInvariant())

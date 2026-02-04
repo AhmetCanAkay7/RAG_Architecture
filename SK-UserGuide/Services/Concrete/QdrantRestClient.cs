@@ -101,7 +101,7 @@ public class QdrantRestClient : IDisposable
             vector,
             limit,
             with_payload = true,
-            score_threshold = 0.5f  // Minimum cosine similarity threshold
+            score_threshold = 0.53f  // Minimum cosine similarity threshold
         };
 
         var json = JsonSerializer.Serialize(payload, _jsonOptions);
