@@ -10,14 +10,22 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// CORS policy for API access from other local projects
+// CORS policy for API access from CP and other local projects
+var allowedOrigins = builder.Configuration["Cors:AllowedOrigins"] ?? "";
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowCP", policy =>
     {
         policy.SetIsOriginAllowed(origin =>
-                new Uri(origin).Host == "localhost" ||
-                new Uri(origin).Host == "127.0.0.1")
+              {
+                  var host = new Uri(origin).Host;
+                  if (host == "localhost" || host == "127.0.0.1")
+                      return true;
+
+                  // Support additional origins from config (comma-separated)
+                  return allowedOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                      .Any(o => origin.StartsWith(o.Trim(), StringComparison.OrdinalIgnoreCase));
+              })
               .AllowAnyHeader()
               .AllowAnyMethod();
     });

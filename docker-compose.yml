@@ -3,9 +3,19 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     ports:
-      - "6333:6333" # HTTP REST API port only (gRPC port removed)
+      - "6333:6333"
     environment:
       - QDRANT__SERVICE__HTTP_PORT=6333
     volumes:
-      - ./qdrant_storage:/qdrant/storage
+      - qdrant_data:/qdrant/storage
     restart: unless-stopped
+
+  sk-userguide:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    network_mode: host
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
