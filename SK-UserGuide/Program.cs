@@ -49,12 +49,14 @@ Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 // 1. Configuration binding (model-agnostic)
 // ──────────────────────────────────────────────
 builder.Services.Configure<LlmSettings>(builder.Configuration.GetSection("Llm"));
-builder.Services.Configure<AzureOpenAiSettings>(builder.Configuration.GetSection("AzureOpenAI"));
+builder.Services.Configure<OpenAiSettings>(builder.Configuration.GetSection("OpenAI"));
+builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<QdrantSettings>(builder.Configuration.GetSection("Qdrant"));
 builder.Services.Configure<RagSettings>(builder.Configuration.GetSection("Rag"));
 
 var llmSettings = builder.Configuration.GetSection("Llm").Get<LlmSettings>() ?? new LlmSettings();
-var azureSettings = builder.Configuration.GetSection("AzureOpenAI").Get<AzureOpenAiSettings>() ?? new AzureOpenAiSettings();
+var openAiSettings = builder.Configuration.GetSection("OpenAI").Get<OpenAiSettings>() ?? new OpenAiSettings();
+var ollamaSettings = builder.Configuration.GetSection("Ollama").Get<OllamaSettings>() ?? new OllamaSettings();
 
 // ──────────────────────────────────────────────
 // 2. Qdrant HTTP Client
@@ -68,26 +70,17 @@ var kernelBuilder = Kernel.CreateBuilder();
 
 switch (llmSettings.Provider)
 {
-    case "AzureOpenAI":
-        ValidateAzureSettings(azureSettings);
+    case "OpenAI":
+        ValidateOpenAiSettings(openAiSettings);
 
-        kernelBuilder.AddAzureOpenAIChatCompletion(
-            deploymentName: azureSettings.ChatDeploymentName,
-            endpoint: azureSettings.Endpoint,
-            apiKey: azureSettings.ApiKey);
+        kernelBuilder.AddOpenAIChatCompletion(
+            modelId: llmSettings.ChatModel,
+            apiKey: openAiSettings.ApiKey);
         break;
-
-    // Future providers can be added here:
-    // case "OpenAI":
-    //     kernelBuilder.AddOpenAIChatCompletion(modelId: llmSettings.ChatModel, apiKey: "...");
-    //     break;
-    // case "Ollama":
-    //     kernelBuilder.AddOpenAIChatCompletion(modelId: llmSettings.ChatModel, endpoint: new Uri("..."), apiKey: "ignore");
-    //     break;
 
     default:
         throw new InvalidOperationException(
-            $"Unsupported LLM provider: '{llmSettings.Provider}'. Supported: AzureOpenAI");
+            $"Unsupported LLM provider: '{llmSettings.Provider}'. Supported: OpenAI");
 }
 
 builder.Services.AddSingleton(kernelBuilder.Build());
@@ -97,13 +90,20 @@ builder.Services.AddSingleton(kernelBuilder.Build());
 // ──────────────────────────────────────────────
 switch (llmSettings.Provider)
 {
-    case "AzureOpenAI":
-#pragma warning disable SKEXP0010
-        builder.Services.AddAzureOpenAIEmbeddingGenerator(
-            deploymentName: azureSettings.EmbeddingDeploymentName,
-            endpoint: azureSettings.Endpoint,
-            apiKey: azureSettings.ApiKey);
-#pragma warning restore SKEXP0010
+    case "OpenAI":
+        builder.Services.AddSingleton<Microsoft.SemanticKernel.Embeddings.ITextEmbeddingGenerationService>(sp =>
+        {
+            var tempBuilder = Microsoft.SemanticKernel.Kernel.CreateBuilder();
+            
+            var client = new HttpClient();
+            client.BaseAddress = new Uri(ollamaSettings.Endpoint.TrimEnd('/') + "/v1/");
+            
+            tempBuilder.AddOpenAITextEmbeddingGeneration(
+                modelId: llmSettings.EmbeddingModel,
+                apiKey: "ollama", // Dummy key
+                httpClient: client);
+            return tempBuilder.Build().GetRequiredService<Microsoft.SemanticKernel.Embeddings.ITextEmbeddingGenerationService>();
+        });
         break;
 
     default:
@@ -166,23 +166,17 @@ app.Run();
 // ──────────────────────────────────────────────
 // Helper Methods
 // ──────────────────────────────────────────────
-static void ValidateAzureSettings(AzureOpenAiSettings settings)
+static void ValidateOpenAiSettings(OpenAiSettings settings)
 {
     var errors = new List<string>();
 
-    if (string.IsNullOrWhiteSpace(settings.Endpoint))
-        errors.Add("AzureOpenAI:Endpoint is not configured");
     if (string.IsNullOrWhiteSpace(settings.ApiKey))
-        errors.Add("AzureOpenAI:ApiKey is not configured");
-    if (string.IsNullOrWhiteSpace(settings.ChatDeploymentName))
-        errors.Add("AzureOpenAI:ChatDeploymentName is not configured");
-    if (string.IsNullOrWhiteSpace(settings.EmbeddingDeploymentName))
-        errors.Add("AzureOpenAI:EmbeddingDeploymentName is not configured");
+        errors.Add("OpenAI:ApiKey is not configured");
 
     if (errors.Count > 0)
     {
         throw new InvalidOperationException(
-            "Azure OpenAI configuration is incomplete. " +
+            "OpenAI configuration is incomplete. " +
             "Please set the following via environment variables or user-secrets:\n" +
             string.Join("\n", errors.Select(e => $"  - {e}")));
     }
