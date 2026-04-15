@@ -50,13 +50,11 @@ Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 // ──────────────────────────────────────────────
 builder.Services.Configure<LlmSettings>(builder.Configuration.GetSection("Llm"));
 builder.Services.Configure<OpenAiSettings>(builder.Configuration.GetSection("OpenAI"));
-builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<QdrantSettings>(builder.Configuration.GetSection("Qdrant"));
 builder.Services.Configure<RagSettings>(builder.Configuration.GetSection("Rag"));
 
 var llmSettings = builder.Configuration.GetSection("Llm").Get<LlmSettings>() ?? new LlmSettings();
 var openAiSettings = builder.Configuration.GetSection("OpenAI").Get<OpenAiSettings>() ?? new OpenAiSettings();
-var ollamaSettings = builder.Configuration.GetSection("Ollama").Get<OllamaSettings>() ?? new OllamaSettings();
 
 // ──────────────────────────────────────────────
 // 2. Qdrant HTTP Client
@@ -94,14 +92,11 @@ switch (llmSettings.Provider)
         builder.Services.AddSingleton<Microsoft.SemanticKernel.Embeddings.ITextEmbeddingGenerationService>(sp =>
         {
             var tempBuilder = Microsoft.SemanticKernel.Kernel.CreateBuilder();
-            
-            var client = new HttpClient();
-            client.BaseAddress = new Uri(ollamaSettings.Endpoint.TrimEnd('/') + "/v1/");
-            
+
             tempBuilder.AddOpenAITextEmbeddingGeneration(
                 modelId: llmSettings.EmbeddingModel,
-                apiKey: "ollama", // Dummy key
-                httpClient: client);
+                apiKey: openAiSettings.ApiKey);
+
             return tempBuilder.Build().GetRequiredService<Microsoft.SemanticKernel.Embeddings.ITextEmbeddingGenerationService>();
         });
         break;

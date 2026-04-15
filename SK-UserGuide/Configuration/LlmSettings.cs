@@ -20,13 +20,15 @@ public record LlmSettings
     /// <summary>
     /// Embedding model name.
     /// </summary>
-    public string EmbeddingModel { get; init; } = "nomic-embed-text";
+    public string EmbeddingModel { get; init; } = "text-embedding-3-small";
 
     /// <summary>
     /// Embedding vector dimensions. Must match the collection vector size in Qdrant.
-    /// nomic-embed-text = 768
+    /// text-embedding-3-small = 1536
+    /// text-embedding-3-large = 3072
+    /// text-embedding-ada-002 = 1536
     /// </summary>
-    public int EmbeddingDimensions { get; init; } = 768;
+    public int EmbeddingDimensions { get; init; } = 1536;
 
     /// <summary>
     /// Maximum tokens for LLM response generation.
