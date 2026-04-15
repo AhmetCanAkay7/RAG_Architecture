@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -9,19 +9,25 @@ using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.Concrete;
 
 namespace SK_UserGuide.Services.Retrieval;
+
+/// <summary>
+/// Hybrid retrieval service combining dense (vector) and sparse (keyword) search.
+/// Collection-aware for multi-tenant support.
+/// Token budgets are configurable via RagSettings.
+/// </summary>
 public class HybridRetrievalService : IHybridRetrievalService
 {
     private readonly QdrantRestClient _qdrantClient;
     private readonly HttpClient _httpClient;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
-    private readonly QdrantSettings _settings;
+    private readonly QdrantSettings _qdrantSettings;
+    private readonly int _targetTokenBudget;
 
     // Configuration constants
     private const int DenseCandidateLimit = 25;
     private const int SparseCandidateLimit = 15;
     private const int MinResultCount = 3;
     private const int MaxResultCount = 7;
-    private const int TargetTokenBudget = 800;
     private const int RrfK = 60;
     private const double ThresholdRatio = 0.6;
     private const double AbsoluteMinScore = 0.02;  // Absolute minimum RRF score threshold
@@ -36,19 +42,23 @@ public class HybridRetrievalService : IHybridRetrievalService
         QdrantRestClient qdrantClient,
         HttpClient httpClient,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-        IOptions<QdrantSettings> options)
+        IOptions<QdrantSettings> qdrantOptions,
+        IOptions<RagSettings> ragOptions)
     {
         _qdrantClient = qdrantClient;
         _httpClient = httpClient;
         _embeddingGenerator = embeddingGenerator;
-        _settings = options.Value;
-        _httpClient.BaseAddress = new Uri(_settings.Host);
+        _qdrantSettings = qdrantOptions.Value;
+        _targetTokenBudget = ragOptions.Value.ContextTokenBudget;
+        _httpClient.BaseAddress = new Uri(_qdrantSettings.Host);
     }
 
     /// <summary>
     /// Perform hybrid retrieval: dense + sparse search with smart selection.
     /// </summary>
-    public async Task<RetrievalResult> RetrieveAsync(string question)
+    /// <param name="question">User question.</param>
+    /// <param name="collectionName">Target Qdrant collection.</param>
+    public async Task<RetrievalResult> RetrieveAsync(string question, string collectionName)
     {
         // 1. Generate question embedding
         var embeddings = await _embeddingGenerator.GenerateAsync([question]);
@@ -58,8 +68,8 @@ public class HybridRetrievalService : IHybridRetrievalService
         var keywords = KeywordExtractor.Extract(question);
 
         // 3. Parallel search: dense + sparse
-        var denseTask = _qdrantClient.SearchAsync(_settings.Collection, queryVector, DenseCandidateLimit);
-        var sparseTask = SearchByKeywordsAsync(keywords);
+        var denseTask = _qdrantClient.SearchAsync(collectionName, queryVector, DenseCandidateLimit);
+        var sparseTask = SearchByKeywordsAsync(keywords, collectionName);
 
         await Task.WhenAll(denseTask, sparseTask);
 
@@ -90,7 +100,8 @@ public class HybridRetrievalService : IHybridRetrievalService
     /// Search by keywords using Qdrant full-text index filter (server-side).
     /// Uses text_any for OR matching - returns results containing ANY keyword.
     /// </summary>
-    private async Task<List<QdrantRestClient.SearchResult>> SearchByKeywordsAsync(List<string> keywords)
+    private async Task<List<QdrantRestClient.SearchResult>> SearchByKeywordsAsync(
+        List<string> keywords, string collectionName)
     {
         if (keywords.Count == 0)
             return new List<QdrantRestClient.SearchResult>();
@@ -135,7 +146,7 @@ public class HybridRetrievalService : IHybridRetrievalService
             };
 
             var response = await _httpClient.PostAsJsonAsync(
-                $"/collections/{_settings.Collection}/points/scroll",
+                $"/collections/{collectionName}/points/scroll",
                 scrollRequest,
                 _jsonOptions);
 
@@ -289,12 +300,12 @@ public class HybridRetrievalService : IHybridRetrievalService
             var chunkTokens = chunk.EstimatedTokens;
 
             // Check budget
-            if (tokensUsed + chunkTokens > TargetTokenBudget)
+            if (tokensUsed + chunkTokens > _targetTokenBudget)
             {
                 // Try to fit partial chunk if we're under 80% budget
-                if (tokensUsed < TargetTokenBudget * 0.8)
+                if (tokensUsed < _targetTokenBudget * 0.8)
                 {
-                    var remainingTokens = TargetTokenBudget - tokensUsed;
+                    var remainingTokens = _targetTokenBudget - tokensUsed;
                     var remainingChars = (int)(remainingTokens * 3.5);
                     var truncatedText = TruncateAtSentence(chunk.Text, remainingChars);
 

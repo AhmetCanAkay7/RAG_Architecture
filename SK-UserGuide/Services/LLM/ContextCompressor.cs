@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Options;
+using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Retrieval;
 
 namespace SK_UserGuide.Services.LLM;
@@ -6,16 +8,24 @@ namespace SK_UserGuide.Services.LLM;
 /// <summary>
 /// Compresses retrieved context by extracting relevant sentences.
 /// Uses extractive compression (no LLM call required).
+/// Token budgets are configurable via RagSettings.
 /// </summary>
 public class ContextCompressor
 {
-    private const int TargetTokenBudget = 300;
-    private const int MaxSentencesPerChunk = 5;
+    private readonly int _targetTokenBudget;
+    private readonly int _maxSentencesPerChunk;
+    private readonly int _summaryMaxSentences;
+    private readonly int _summaryTargetTokens;
     private const int MinSentenceLength = 15;
-    
-    // Summary settings - increased for more context
-    private const int SummaryMaxSentences = 6;
-    private const int SummaryTargetTokens = 250;
+
+    public ContextCompressor(IOptions<RagSettings> ragSettings)
+    {
+        var settings = ragSettings.Value;
+        _targetTokenBudget = settings.CompressorTokenBudget;
+        _maxSentencesPerChunk = settings.MaxSentencesPerChunk;
+        _summaryMaxSentences = settings.SummaryMaxSentences;
+        _summaryTargetTokens = settings.SummaryTargetTokens;
+    }
 
     /// <summary>
     /// Compress chunks by extracting relevant sentences.
@@ -39,7 +49,7 @@ public class ContextCompressor
         {
             var sentences = SplitToSentences(chunk.Text);
             var relevantSentences = SelectRelevantSentences(
-                sentences, questionKeywords, MaxSentencesPerChunk, chunk.Text);
+                sentences, questionKeywords, _maxSentencesPerChunk, chunk.Text);
 
             if (relevantSentences.Count > 0)
             {
@@ -58,7 +68,7 @@ public class ContextCompressor
             }
 
             // Token budget check
-            if (result.EstimatedTokens >= TargetTokenBudget)
+            if (result.EstimatedTokens >= _targetTokenBudget)
                 break;
         }
 
@@ -72,7 +82,7 @@ public class ContextCompressor
     }
 
     /// <summary>
-    /// Generate summary with more context (6 sentences, token-budgeted).
+    /// Generate summary with configurable sentence count and token budget.
     /// </summary>
     private string GenerateSummary(List<ContextItem> items, HashSet<string> questionKeywords)
     {
@@ -104,10 +114,10 @@ public class ContextCompressor
         {
             var sentenceTokens = EstimateTokens(item.Sentence);
             
-            if (currentTokens + sentenceTokens > SummaryTargetTokens)
+            if (currentTokens + sentenceTokens > _summaryTargetTokens)
                 continue;
                 
-            if (selectedSentences.Count >= SummaryMaxSentences)
+            if (selectedSentences.Count >= _summaryMaxSentences)
                 break;
 
             selectedSentences.Add((item.Sentence, item.Index));

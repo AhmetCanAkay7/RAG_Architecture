@@ -10,5 +10,7 @@ public interface IHybridRetrievalService
     /// <summary>
     /// Perform hybrid retrieval: dense + sparse search with smart selection.
     /// </summary>
-    Task<RetrievalResult> RetrieveAsync(string question);
+    /// <param name="question">User question to search for.</param>
+    /// <param name="collectionName">Qdrant collection name (tenant-specific).</param>
+    Task<RetrievalResult> RetrieveAsync(string question, string collectionName);
 }

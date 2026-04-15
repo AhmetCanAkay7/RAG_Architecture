@@ -2,7 +2,17 @@ namespace SK_UserGuide.Models.Api;
 
 public record RagQuestionRequest
 {
+    /// <summary>
+    /// The user's question.
+    /// </summary>
     public required string Question { get; init; }
+
+    /// <summary>
+    /// Tenant identifier for collection routing.
+    /// Defaults to "default" if not specified.
+    /// Examples: "hr-bot", "planning-team", "it-support"
+    /// </summary>
+    public string TenantId { get; init; } = "default";
 }
 
 public record RagAnswerResponse

@@ -11,7 +11,7 @@ namespace SK_UserGuide.Services.Concrete;
 /// <summary>
 /// RAG retrieval service with streaming responses.
 /// Supports: Hybrid mode (LLM + context) and ContextOnly mode (no LLM).
-/// Optimized for Qwen3:4b model.
+/// LLM parameters are configurable via LlmSettings.
 /// </summary>
 public class RagRetrievalService : IRagRetrievalService
 {
@@ -19,31 +19,44 @@ public class RagRetrievalService : IRagRetrievalService
     private readonly Kernel _kernel;
     private readonly ContextCompressor _compressor;
     private readonly PromptBuilder _promptBuilder;
+    private readonly LlmSettings _llmSettings;
+    private readonly QdrantSettings _qdrantSettings;
     private readonly string _responseMode;
 
-    private const string ChatSystemPrompt = "You are a helpful assistant. Respond briefly and professionally in English.";
+    private const string ChatSystemPrompt =
+        "You are a helpful assistant. Respond professionally and clearly. " +
+        "If you don't know the answer, say so honestly.";
 
     public RagRetrievalService(
         IHybridRetrievalService hybridRetrieval,
         Kernel kernel,
-        IOptions<RagSettings> ragSettings)
+        IOptions<RagSettings> ragSettings,
+        IOptions<LlmSettings> llmSettings,
+        IOptions<QdrantSettings> qdrantSettings,
+        ContextCompressor compressor,
+        PromptBuilder promptBuilder)
     {
         _hybridRetrieval = hybridRetrieval;
         _kernel = kernel;
-        _compressor = new ContextCompressor();
-        _promptBuilder = new PromptBuilder();
+        _compressor = compressor;
+        _promptBuilder = promptBuilder;
+        _llmSettings = llmSettings.Value;
+        _qdrantSettings = qdrantSettings.Value;
         _responseMode = ragSettings.Value.ResponseMode;
     }
 
     /// <summary>
-    /// Process a question with streaming response.
+    /// Process a question with streaming response for a specific tenant.
     /// </summary>
     public async IAsyncEnumerable<string> AskStreamingAsync(
         string question,
+        string tenantId,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        var collectionName = ResolveCollectionName(tenantId);
+
         // 1. Get context from vector DB
-        var retrievalResult = await _hybridRetrieval.RetrieveAsync(question);
+        var retrievalResult = await _hybridRetrieval.RetrieveAsync(question, collectionName);
 
         // 2. No context → General chat (streaming)
         if (retrievalResult.ChunkCount == 0)
@@ -85,7 +98,7 @@ public class RagRetrievalService : IRagRetrievalService
     }
 
     /// <summary>
-    /// Stream LLM response token by token.
+    /// Stream LLM response token by token using configured settings.
     /// </summary>
     private async IAsyncEnumerable<string> StreamLLMAsync(
         string prompt,
@@ -93,9 +106,9 @@ public class RagRetrievalService : IRagRetrievalService
     {
         var settings = new OpenAIPromptExecutionSettings
         {
-            MaxTokens = 200,        // Shorter = faster
-            Temperature = 0.1,      // Lower = more deterministic
-            TopP = 0.85
+            MaxTokens = _llmSettings.MaxTokens,
+            Temperature = _llmSettings.Temperature,
+            TopP = _llmSettings.TopP
         };
 
         await foreach (var chunk in _kernel.InvokePromptStreamingAsync(prompt, new KernelArguments(settings), cancellationToken: cancellationToken))
@@ -141,5 +154,16 @@ public class RagRetrievalService : IRagRetrievalService
             });
 
         return "\n\n---\n📚 **Sources:**\n" + string.Join("\n", sourceLines);
+    }
+
+    /// <summary>
+    /// Resolve collection name from tenant ID.
+    /// Falls back to default collection if tenant is empty.
+    /// </summary>
+    private string ResolveCollectionName(string tenantId)
+    {
+        return string.IsNullOrWhiteSpace(tenantId)
+            ? _qdrantSettings.DefaultCollection
+            : tenantId;
     }
 }

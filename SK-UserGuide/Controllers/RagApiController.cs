@@ -34,7 +34,8 @@ public partial class RagApiController : ControllerBase
 
         try
         {
-            _logger.LogInformation("RAG Streaming API request: {Question}", request.Question);
+            _logger.LogInformation("RAG Streaming API request: {Question}, Tenant: {TenantId}",
+                request.Question, request.TenantId);
 
             var fullResponse = new System.Text.StringBuilder();
             var sourcesStarted = false;
@@ -42,7 +43,7 @@ public partial class RagApiController : ControllerBase
             var sentLength = 0; // Track what we've actually sent
 
             // Stream each token as it arrives, but stop when sources section begins
-            await foreach (var chunk in _ragService.AskStreamingAsync(request.Question, cancellationToken))
+            await foreach (var chunk in _ragService.AskStreamingAsync(request.Question, request.TenantId, cancellationToken))
             {
                 fullResponse.Append(chunk);
 
@@ -87,7 +88,8 @@ public partial class RagApiController : ControllerBase
 
             await WriteSSEAsync("done", new { fromCache = false }, cancellationToken);
 
-            _logger.LogInformation("RAG Streaming completed for: {Question}", request.Question);
+            _logger.LogInformation("RAG Streaming completed for: {Question}, Tenant: {TenantId}",
+                request.Question, request.TenantId);
         }
         catch (OperationCanceledException)
         {
@@ -121,14 +123,15 @@ public partial class RagApiController : ControllerBase
 
         try
         {
-            _logger.LogInformation("RAG API request: {Question}", request.Question);
+            _logger.LogInformation("RAG API request: {Question}, Tenant: {TenantId}",
+                request.Question, request.TenantId);
 
             // Collect streamed response
             var responseBuilder = new System.Text.StringBuilder();
             var sources = new List<SourceInfo>();
             var chunkCount = 0;
 
-            await foreach (var chunk in _ragService.AskStreamingAsync(request.Question))
+            await foreach (var chunk in _ragService.AskStreamingAsync(request.Question, request.TenantId))
             {
                 chunkCount++;
                 responseBuilder.Append(chunk);
@@ -146,8 +149,8 @@ public partial class RagApiController : ControllerBase
             // Clean answer (remove source section for API response)
             var answer = CleanAnswer(fullResponse);
 
-            _logger.LogInformation("RAG API response generated, length: {Length}, fromCache: {FromCache}",
-                answer.Length, fromCache);
+            _logger.LogInformation("RAG API response generated, length: {Length}, fromCache: {FromCache}, Tenant: {TenantId}",
+                answer.Length, fromCache, request.TenantId);
 
             return Ok(new RagAnswerResponse
             {

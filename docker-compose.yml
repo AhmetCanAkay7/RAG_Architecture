@@ -1,4 +1,4 @@
-﻿version: '3.8'
+version: '3.8'
 services:
   qdrant:
     image: qdrant/qdrant:latest
@@ -16,6 +16,11 @@ services:
       dockerfile: Dockerfile
     network_mode: host
     restart: unless-stopped
+    environment:
+      - AzureOpenAI__Endpoint=${AZURE_OPENAI_ENDPOINT}
+      - AzureOpenAI__ApiKey=${AZURE_OPENAI_API_KEY}
+      - AzureOpenAI__ChatDeploymentName=${AZURE_OPENAI_CHAT_DEPLOYMENT}
+      - AzureOpenAI__EmbeddingDeploymentName=${AZURE_OPENAI_EMBEDDING_DEPLOYMENT}
 
 volumes:
   qdrant_data:

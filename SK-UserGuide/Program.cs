@@ -1,11 +1,11 @@
-﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.Concrete;
-using SK_UserGuide.Services.Ingestion; // Document processing
-using SK_UserGuide.Services.Retrieval; // chunk search
+using SK_UserGuide.Services.Ingestion;
+using SK_UserGuide.Services.Retrieval;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -45,44 +45,87 @@ builder.Services.AddSwaggerGen();
 // Encoding provider for Turkish characters
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-// 1. Configuration binding
-builder.Services.Configure<OllamaSettings>(builder.Configuration.GetSection("Ollama"));
+// ──────────────────────────────────────────────
+// 1. Configuration binding (model-agnostic)
+// ──────────────────────────────────────────────
+builder.Services.Configure<LlmSettings>(builder.Configuration.GetSection("Llm"));
+builder.Services.Configure<AzureOpenAiSettings>(builder.Configuration.GetSection("AzureOpenAI"));
 builder.Services.Configure<QdrantSettings>(builder.Configuration.GetSection("Qdrant"));
 builder.Services.Configure<RagSettings>(builder.Configuration.GetSection("Rag"));
 
+var llmSettings = builder.Configuration.GetSection("Llm").Get<LlmSettings>() ?? new LlmSettings();
+var azureSettings = builder.Configuration.GetSection("AzureOpenAI").Get<AzureOpenAiSettings>() ?? new AzureOpenAiSettings();
+
+// ──────────────────────────────────────────────
+// 2. Qdrant HTTP Client
+// ──────────────────────────────────────────────
 builder.Services.AddHttpClient<QdrantRestClient>();
 
-// 3. Embedding Generator
-builder.Services.AddHttpClient<OllamaEmbeddingService>();
-builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>, OllamaEmbeddingService>();
-
-var ollamaSettings = builder.Configuration.GetSection("Ollama").Get<OllamaSettings>() ?? new OllamaSettings();
-
-
-
-// Build kernel with Ollama
+// ──────────────────────────────────────────────
+// 3. Semantic Kernel - Model-Agnostic Provider Setup
+// ──────────────────────────────────────────────
 var kernelBuilder = Kernel.CreateBuilder();
 
-#pragma warning disable SKEXP0010
-kernelBuilder.AddOpenAIChatCompletion(
-    modelId: ollamaSettings.ChatModel,
-    endpoint: new Uri($"{ollamaSettings.BaseUrl}/v1"),
-    apiKey: "ignore");
-#pragma warning restore SKEXP0010
+switch (llmSettings.Provider)
+{
+    case "AzureOpenAI":
+        ValidateAzureSettings(azureSettings);
+
+        kernelBuilder.AddAzureOpenAIChatCompletion(
+            deploymentName: azureSettings.ChatDeploymentName,
+            endpoint: azureSettings.Endpoint,
+            apiKey: azureSettings.ApiKey);
+        break;
+
+    // Future providers can be added here:
+    // case "OpenAI":
+    //     kernelBuilder.AddOpenAIChatCompletion(modelId: llmSettings.ChatModel, apiKey: "...");
+    //     break;
+    // case "Ollama":
+    //     kernelBuilder.AddOpenAIChatCompletion(modelId: llmSettings.ChatModel, endpoint: new Uri("..."), apiKey: "ignore");
+    //     break;
+
+    default:
+        throw new InvalidOperationException(
+            $"Unsupported LLM provider: '{llmSettings.Provider}'. Supported: AzureOpenAI");
+}
 
 builder.Services.AddSingleton(kernelBuilder.Build());
 
+// ──────────────────────────────────────────────
+// 4. Embedding Generator - Model-Agnostic
+// ──────────────────────────────────────────────
+switch (llmSettings.Provider)
+{
+    case "AzureOpenAI":
+#pragma warning disable SKEXP0010
+        builder.Services.AddAzureOpenAIEmbeddingGenerator(
+            deploymentName: azureSettings.EmbeddingDeploymentName,
+            endpoint: azureSettings.Endpoint,
+            apiKey: azureSettings.ApiKey);
+#pragma warning restore SKEXP0010
+        break;
+
+    default:
+        throw new InvalidOperationException(
+            $"No embedding generator configured for provider: '{llmSettings.Provider}'");
+}
+
+// ──────────────────────────────────────────────
 // 5. Hybrid Retrieval Service
+// ──────────────────────────────────────────────
 builder.Services.AddHttpClient<IHybridRetrievalService, HybridRetrievalService>();
 
 // 6. Response Cache (in-memory, singleton)
 builder.Services.AddSingleton<SK_UserGuide.Services.Chat.ResponseCache>();
 
-// 8. RAG Services
+// 7. RAG Services
 builder.Services.AddScoped<IRagRetrievalService, RagRetrievalService>();
 builder.Services.AddScoped<IRagService, RagService>();
 
-// 7. Ingestion Pipeline Services
+// ──────────────────────────────────────────────
+// 8. Ingestion Pipeline Services
+// ──────────────────────────────────────────────
 builder.Services.AddScoped<TextCleaner>();
 builder.Services.AddScoped<PdfTextExtractor>();
 builder.Services.AddScoped<TxtTextExtractor>();
@@ -119,3 +162,28 @@ app.MapControllerRoute(
     .WithStaticAssets();
 
 app.Run();
+
+// ──────────────────────────────────────────────
+// Helper Methods
+// ──────────────────────────────────────────────
+static void ValidateAzureSettings(AzureOpenAiSettings settings)
+{
+    var errors = new List<string>();
+
+    if (string.IsNullOrWhiteSpace(settings.Endpoint))
+        errors.Add("AzureOpenAI:Endpoint is not configured");
+    if (string.IsNullOrWhiteSpace(settings.ApiKey))
+        errors.Add("AzureOpenAI:ApiKey is not configured");
+    if (string.IsNullOrWhiteSpace(settings.ChatDeploymentName))
+        errors.Add("AzureOpenAI:ChatDeploymentName is not configured");
+    if (string.IsNullOrWhiteSpace(settings.EmbeddingDeploymentName))
+        errors.Add("AzureOpenAI:EmbeddingDeploymentName is not configured");
+
+    if (errors.Count > 0)
+    {
+        throw new InvalidOperationException(
+            "Azure OpenAI configuration is incomplete. " +
+            "Please set the following via environment variables or user-secrets:\n" +
+            string.Join("\n", errors.Select(e => $"  - {e}")));
+    }
+}

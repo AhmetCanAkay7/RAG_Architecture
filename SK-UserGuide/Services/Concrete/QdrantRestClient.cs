@@ -9,11 +9,13 @@ namespace SK_UserGuide.Services.Concrete;
 
 /// <summary>
 /// REST-based Qdrant client that uses HTTP/1.1 to bypass corporate proxy HTTP/2 blocking.
+/// All operations accept collectionName parameter for multi-tenant support.
 /// </summary>
 public class QdrantRestClient : IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly QdrantSettings _settings;
+    private readonly LlmSettings _llmSettings;
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -21,10 +23,14 @@ public class QdrantRestClient : IDisposable
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public QdrantRestClient(HttpClient httpClient, IOptions<QdrantSettings> options)
+    public QdrantRestClient(
+        HttpClient httpClient,
+        IOptions<QdrantSettings> qdrantOptions,
+        IOptions<LlmSettings> llmOptions)
     {
         _httpClient = httpClient;
-        _settings = options.Value;
+        _settings = qdrantOptions.Value;
+        _llmSettings = llmOptions.Value;
         _httpClient.BaseAddress = new Uri(_settings.Host);
     }
 
@@ -42,8 +48,9 @@ public class QdrantRestClient : IDisposable
 
     /// <summary>
     /// Creates a collection if it doesn't exist.
+    /// Vector size is determined by LlmSettings.EmbeddingDimensions.
     /// </summary>
-    public async Task CreateCollectionIfNotExistsAsync(string collectionName, int vectorSize = 768)
+    public async Task CreateCollectionIfNotExistsAsync(string collectionName)
     {
         var collections = await ListCollectionsAsync();
         if (collections.Contains(collectionName))
@@ -53,7 +60,7 @@ public class QdrantRestClient : IDisposable
         {
             vectors = new
             {
-                size = vectorSize,
+                size = _llmSettings.EmbeddingDimensions,
                 distance = "Cosine"
             }
         };
@@ -119,6 +126,15 @@ public class QdrantRestClient : IDisposable
 
         var result = await response.Content.ReadFromJsonAsync<SearchResponse>(_jsonOptions);
         return result?.Result ?? new List<SearchResult>();
+    }
+
+    /// <summary>
+    /// Deletes a collection.
+    /// </summary>
+    public async Task DeleteCollectionAsync(string collectionName)
+    {
+        var response = await _httpClient.DeleteAsync($"/collections/{collectionName}");
+        response.EnsureSuccessStatusCode();
     }
 
     public void Dispose()

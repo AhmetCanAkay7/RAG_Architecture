@@ -1,4 +1,4 @@
-﻿namespace SK_UserGuide.Services.Abstract;
+namespace SK_UserGuide.Services.Abstract;
 
 public interface IRagService
 {
@@ -6,5 +6,8 @@ public interface IRagService
     /// Ask a question using RAG pipeline with streaming response.
     /// Cached responses are yielded immediately.
     /// </summary>
-    IAsyncEnumerable<string> AskStreamingAsync(string question, CancellationToken cancellationToken = default);
+    /// <param name="question">User question.</param>
+    /// <param name="tenantId">Tenant identifier for collection routing.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    IAsyncEnumerable<string> AskStreamingAsync(string question, string tenantId, CancellationToken cancellationToken = default);
 }

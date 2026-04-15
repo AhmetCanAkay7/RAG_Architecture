@@ -10,11 +10,13 @@ namespace SK_UserGuide.Services.Ingestion;
 
 /// <summary>
 /// Repository for ingesting chunks into Qdrant with proper metadata.
+/// All operations are collection-aware for multi-tenant support.
 /// </summary>
 public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
 {
     private readonly HttpClient _httpClient;
-    private readonly QdrantSettings _settings;
+    private readonly QdrantSettings _qdrantSettings;
+    private readonly LlmSettings _llmSettings;
     private readonly DocumentMetadataBuilder _metadataBuilder;
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -25,31 +27,34 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
 
     public QdrantIngestionRepository(
         HttpClient httpClient,
-        IOptions<QdrantSettings> options,
+        IOptions<QdrantSettings> qdrantOptions,
+        IOptions<LlmSettings> llmOptions,
         DocumentMetadataBuilder metadataBuilder)
     {
         _httpClient = httpClient;
-        _settings = options.Value;
+        _qdrantSettings = qdrantOptions.Value;
+        _llmSettings = llmOptions.Value;
         _metadataBuilder = metadataBuilder;
-        _httpClient.BaseAddress = new Uri(_settings.Host);
+        _httpClient.BaseAddress = new Uri(_qdrantSettings.Host);
     }
 
     /// <summary>
     /// Ensure collection exists with proper configuration.
+    /// Vector size is determined by LlmSettings.EmbeddingDimensions.
     /// </summary>
-    public async Task EnsureCollectionAsync()
+    public async Task EnsureCollectionAsync(string collectionName)
     {
         // Check if collection exists
-        var response = await _httpClient.GetAsync($"/collections/{_settings.Collection}");
+        var response = await _httpClient.GetAsync($"/collections/{collectionName}");
         if (response.IsSuccessStatusCode)
             return;
 
-        // Create collection
+        // Create collection with embedding dimensions from config
         var createRequest = new
         {
             vectors = new
             {
-                size = 768, // nomic-embed-text dimension
+                size = _llmSettings.EmbeddingDimensions,
                 distance = "Cosine"
             },
             hnsw_config = new
@@ -60,24 +65,24 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
         };
 
         var createResponse = await _httpClient.PutAsJsonAsync(
-            $"/collections/{_settings.Collection}",
+            $"/collections/{collectionName}",
             createRequest,
             _jsonOptions);
 
         createResponse.EnsureSuccessStatusCode();
 
         // Create payload indexes for filtering
-        await CreatePayloadIndexAsync("doc_id", "keyword");
-        await CreatePayloadIndexAsync("section_title", "keyword");
+        await CreatePayloadIndexAsync(collectionName, "doc_id", "keyword");
+        await CreatePayloadIndexAsync(collectionName, "section_title", "keyword");
 
         // Create full-text index for sparse search
-        await CreateFullTextIndexAsync("text");
+        await CreateFullTextIndexAsync(collectionName, "text");
     }
 
     /// <summary>
     /// Create a full-text index for text search.
     /// </summary>
-    private async Task CreateFullTextIndexAsync(string fieldName)
+    private async Task CreateFullTextIndexAsync(string collectionName, string fieldName)
     {
         try
         {
@@ -95,7 +100,7 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
             };
 
             await _httpClient.PutAsJsonAsync(
-                $"/collections/{_settings.Collection}/index",
+                $"/collections/{collectionName}/index",
                 indexRequest,
                 _jsonOptions);
         }
@@ -108,7 +113,7 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
     /// <summary>
     /// Create a payload field index.
     /// </summary>
-    private async Task CreatePayloadIndexAsync(string fieldName, string fieldType)
+    private async Task CreatePayloadIndexAsync(string collectionName, string fieldName, string fieldType)
     {
         try
         {
@@ -119,7 +124,7 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
             };
 
             await _httpClient.PutAsJsonAsync(
-                $"/collections/{_settings.Collection}/index",
+                $"/collections/{collectionName}/index",
                 indexRequest,
                 _jsonOptions);
         }
@@ -133,13 +138,14 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
     /// Upsert chunks with their embeddings and metadata.
     /// </summary>
     public async Task UpsertChunksAsync(
+        string collectionName,
         string docId,
         string docName,
         string sourceType,
         List<ChunkResult> chunks,
         List<float[]> embeddings)
     {
-        await EnsureCollectionAsync();
+        await EnsureCollectionAsync(collectionName);
 
         var points = new List<object>();
 
@@ -180,7 +186,7 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PutAsync(
-                $"/collections/{_settings.Collection}/points?wait=true",
+                $"/collections/{collectionName}/points?wait=true",
                 content);
 
             if (!response.IsSuccessStatusCode)
@@ -194,7 +200,7 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
     /// <summary>
     /// Delete all points for a document by doc_id.
     /// </summary>
-    public async Task<int> DeleteByDocIdAsync(string docId)
+    public async Task<int> DeleteByDocIdAsync(string collectionName, string docId)
     {
         var deleteRequest = new
         {
@@ -207,37 +213,23 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
             }
         };
 
-        return await ExecuteDeleteAsync(deleteRequest);
+        return await ExecuteDeleteAsync(collectionName, deleteRequest);
     }
 
     /// <summary>
-    /// Delete points for a document by doc_name (filename).
+    /// Get list of all documents in a collection.
     /// </summary>
-    public async Task<int> DeleteByDocNameAsync(string docName)
-    {
-        var deleteRequest = new
-        {
-            filter = new
-            {
-                must = new[]
-                {
-                    new { key = "doc_name", match = new { value = docName } }
-                }
-            }
-        };
-
-        return await ExecuteDeleteAsync(deleteRequest);
-    }
-
-    /// <summary>
-    /// Get list of all documents in the collection.
-    /// </summary>
-    public async Task<List<DocumentInfo>> GetAllDocumentsAsync()
+    public async Task<List<DocumentInfo>> GetAllDocumentsAsync(string collectionName)
     {
         var documents = new Dictionary<string, DocumentInfo>();
 
         try
         {
+            // Check if collection exists first
+            var checkResponse = await _httpClient.GetAsync($"/collections/{collectionName}");
+            if (!checkResponse.IsSuccessStatusCode)
+                return new List<DocumentInfo>();
+
             // Scroll through all points to get unique documents
             var scrollRequest = new
             {
@@ -253,7 +245,7 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
                     : (object)scrollRequest;
 
                 var response = await _httpClient.PostAsJsonAsync(
-                    $"/collections/{_settings.Collection}/points/scroll",
+                    $"/collections/{collectionName}/points/scroll",
                     requestWithOffset,
                     _jsonOptions);
 
@@ -299,7 +291,7 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
         return documents.Values.ToList();
     }
 
-    private async Task<int> ExecuteDeleteAsync(object deleteRequest)
+    private async Task<int> ExecuteDeleteAsync(string collectionName, object deleteRequest)
     {
         try
         {
@@ -307,7 +299,7 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var response = await _httpClient.PostAsync(
-                $"/collections/{_settings.Collection}/points/delete?wait=true",
+                $"/collections/{collectionName}/points/delete?wait=true",
                 content);
 
             if (!response.IsSuccessStatusCode)

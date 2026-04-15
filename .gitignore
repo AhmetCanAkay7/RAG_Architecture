@@ -361,3 +361,11 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Secrets & Environment files
+appsettings.*.local.json
+*.env
+.env
+
+# Qdrant local storage
+qdrant_storage/

@@ -8,6 +8,7 @@ namespace SK_UserGuide.Services.Ingestion;
 /// <summary>
 /// Orchestrates the complete document ingestion pipeline:
 /// Extract → Clean → Chunk → Embed → Store
+/// Supports multi-tenant isolation via tenantId (mapped to Qdrant collection).
 /// </summary>
 public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
 {
@@ -42,9 +43,11 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
     }
 
     /// <summary>
-    /// Ingest a document file into the vector store.
+    /// Ingest a document file into the vector store for a specific tenant.
     /// </summary>
-    public async Task<IngestionResult> IngestAsync(IFormFile file)
+    /// <param name="file">The uploaded document file.</param>
+    /// <param name="tenantId">Tenant identifier (used as Qdrant collection name).</param>
+    public async Task<IngestionResult> IngestAsync(IFormFile file, string tenantId)
     {
         var stopwatch = Stopwatch.StartNew();
 
@@ -61,9 +64,11 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
             };
             var docId = _metadataBuilder.GenerateStableDocId(fileName);
 
-            _logger.LogInformation("Starting ingestion for {FileName}, DocId: {DocId}", fileName, docId);
+            _logger.LogInformation(
+                "Starting ingestion for {FileName}, DocId: {DocId}, Tenant: {TenantId}",
+                fileName, docId, tenantId);
 
-            // 2. Metin çıkarma
+            // 2. Text extraction
             ExtractedDocument extractedDoc;
             using (var stream = file.OpenReadStream())
             {
@@ -73,7 +78,7 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
                     ".docx" => _docxExtractor.Extract(stream, fileName),
                     ".txt" => _txtExtractor.Extract(stream, fileName),
                     _ => throw new NotSupportedException(
-                        $"Desteklenmeyen dosya formatı: {extension}. Desteklenen formatlar: .pdf, .docx, .txt")
+                        $"Unsupported file format: {extension}. Supported formats: .pdf, .docx, .txt")
                 };
             }
 
@@ -88,44 +93,46 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
                 return new IngestionResult
                 {
                     Success = false,
-                    Message = "Doküman işlenemedi: Geçerli içerik bulunamadı."
+                    Message = "Document could not be processed: No valid content found."
                 };
             }
 
             _logger.LogInformation("Created {ChunkCount} chunks from {FileName}", chunks.Count, fileName);
 
-            await _qdrantRepo.EnsureCollectionAsync();
-            await _qdrantRepo.DeleteByDocIdAsync(docId);
-            _logger.LogInformation("Cleared existing chunks for DocId: {DocId}", docId);
+            // 4. Ensure collection exists and clear existing chunks
+            await _qdrantRepo.EnsureCollectionAsync(tenantId);
+            await _qdrantRepo.DeleteByDocIdAsync(tenantId, docId);
+            _logger.LogInformation("Cleared existing chunks for DocId: {DocId} in collection: {TenantId}", docId, tenantId);
 
-            // 5. Embedding üretimi
+            // 5. Embedding generation
             var texts = chunks.Select(c => c.Text).ToList();
             var embeddings = await _embeddingGenerator.GenerateAsync(texts);
             var vectors = embeddings.Select(e => e.Vector.ToArray()).ToList();
 
             _logger.LogInformation("Generated {EmbeddingCount} embeddings", vectors.Count);
 
-            // 6. Qdrant'a kaydet
+            // 6. Store in Qdrant
             await _qdrantRepo.UpsertChunksAsync(
+                tenantId,
                 docId,
                 fileName,
                 sourceType,
                 chunks,
                 vectors);
 
-            _logger.LogInformation("Upserted {ChunkCount} chunks to Qdrant", chunks.Count);
+            _logger.LogInformation("Upserted {ChunkCount} chunks to Qdrant collection: {TenantId}", chunks.Count, tenantId);
 
             stopwatch.Stop();
 
-            // Chunk istatistikleri
+            // Chunk statistics
             var avgTokens = chunks.Average(c => c.EstimatedTokens);
             var minTokens = chunks.Min(c => c.EstimatedTokens);
             var maxTokens = chunks.Max(c => c.EstimatedTokens);
 
             _logger.LogInformation(
                 "Ingestion complete for {FileName}: {ChunkCount} chunks, avg {AvgTokens:F0} tokens, " +
-                "range [{MinTokens}-{MaxTokens}], {ElapsedMs}ms",
-                fileName, chunks.Count, avgTokens, minTokens, maxTokens, stopwatch.ElapsedMilliseconds);
+                "range [{MinTokens}-{MaxTokens}], {ElapsedMs}ms, tenant: {TenantId}",
+                fileName, chunks.Count, avgTokens, minTokens, maxTokens, stopwatch.ElapsedMilliseconds, tenantId);
 
             return new IngestionResult
             {
@@ -133,18 +140,18 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
                 DocId = docId,
                 ChunkCount = chunks.Count,
                 ProcessingTimeMs = stopwatch.ElapsedMilliseconds,
-                Message = $"Başarıyla işlendi: {chunks.Count} chunk, ortalama {avgTokens:F0} token/chunk"
+                Message = $"Successfully processed: {chunks.Count} chunks, avg {avgTokens:F0} tokens/chunk"
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ingestion failed for {FileName}", file.FileName);
+            _logger.LogError(ex, "Ingestion failed for {FileName} in tenant {TenantId}", file.FileName, tenantId);
 
             return new IngestionResult
             {
                 Success = false,
                 ProcessingTimeMs = stopwatch.ElapsedMilliseconds,
-                Message = $"Hata: {ex.Message}"
+                Message = $"Error: {ex.Message}"
             };
         }
     }

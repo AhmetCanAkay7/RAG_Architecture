@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using SK_UserGuide.Services.Abstract;
 
 namespace SK_UserGuide.Controllers;
@@ -16,9 +16,9 @@ public class ChatController : Controller
     /// Server-Sent Events endpoint for streaming LLM responses.
     /// </summary>
     [HttpGet]
-    public async Task AskStreaming(string question, CancellationToken cancellationToken)
+    public async Task AskStreaming(string question, string tenantId = "default", CancellationToken cancellationToken = default)
     {
-        // browser'a parca parca veri gondereceğimizin haberini veriyoruz.
+        // Inform browser we're sending chunked data
         Response.ContentType = "text/event-stream";
         Response.Headers.Append("Cache-Control", "no-cache");
         Response.Headers.Append("Connection", "keep-alive");
@@ -32,11 +32,11 @@ public class ChatController : Controller
 
         try
         {
-            await foreach (var chunk in _ragService.AskStreamingAsync(question, cancellationToken))
+            await foreach (var chunk in _ragService.AskStreamingAsync(question, tenantId, cancellationToken))
             {
                 var escapedChunk = chunk.Replace("\n", "\\n").Replace("\r", "");
-                await Response.WriteAsync($"data: {escapedChunk}\n\n", cancellationToken); // response stream'e yazar.
-                await Response.Body.FlushAsync(cancellationToken); // Anında gönder, buffer bekleme!
+                await Response.WriteAsync($"data: {escapedChunk}\n\n", cancellationToken);
+                await Response.Body.FlushAsync(cancellationToken);
 
             }
         }

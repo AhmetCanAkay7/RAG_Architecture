@@ -8,5 +8,8 @@ public interface IRagRetrievalService
     /// <summary>
     /// Process a question with RAG pipeline using streaming response.
     /// </summary>
-    IAsyncEnumerable<string> AskStreamingAsync(string question, CancellationToken cancellationToken = default);
+    /// <param name="question">User question.</param>
+    /// <param name="tenantId">Tenant identifier for collection routing.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    IAsyncEnumerable<string> AskStreamingAsync(string question, string tenantId, CancellationToken cancellationToken = default);
 }
