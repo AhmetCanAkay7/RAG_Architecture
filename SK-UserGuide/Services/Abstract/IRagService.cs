@@ -4,7 +4,6 @@ public interface IRagService
 {
     /// <summary>
     /// Ask a question using RAG pipeline with streaming response.
-    /// Cached responses are yielded immediately.
     /// </summary>
     /// <param name="question">User question.</param>
     /// <param name="tenantId">Tenant identifier for collection routing.</param>

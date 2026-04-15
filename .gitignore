@@ -369,4 +369,4 @@ appsettings.*.local.json
 .env
 
 # Qdrant local storage
-qdrant_storage/
+qdrant-storage/

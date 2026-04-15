@@ -17,7 +17,6 @@ public class RagRetrievalService : IRagRetrievalService
 {
     private readonly IHybridRetrievalService _hybridRetrieval;
     private readonly Kernel _kernel;
-    private readonly ContextCompressor _compressor;
     private readonly PromptBuilder _promptBuilder;
     private readonly LlmSettings _llmSettings;
     private readonly QdrantSettings _qdrantSettings;
@@ -33,12 +32,10 @@ public class RagRetrievalService : IRagRetrievalService
         IOptions<RagSettings> ragSettings,
         IOptions<LlmSettings> llmSettings,
         IOptions<QdrantSettings> qdrantSettings,
-        ContextCompressor compressor,
         PromptBuilder promptBuilder)
     {
         _hybridRetrieval = hybridRetrieval;
         _kernel = kernel;
-        _compressor = compressor;
         _promptBuilder = promptBuilder;
         _llmSettings = llmSettings.Value;
         _qdrantSettings = qdrantSettings.Value;
@@ -72,17 +69,12 @@ public class RagRetrievalService : IRagRetrievalService
         // 3. ContextOnly mode → Return context directly (no LLM)
         if (_responseMode == "ContextOnly")
         {
-            yield return FormatContextOnly(question, retrievalResult);
+            yield return FormatContextOnly(retrievalResult);
             yield break;
         }
 
         // 4. Hybrid mode → Stream LLM response with sources
-        var compressedContext = _compressor.Compress(
-            retrievalResult.SelectedChunks,
-            question,
-            "EN");
-
-        var prompt = _promptBuilder.Build(question, compressedContext);
+        var prompt = _promptBuilder.Build(question, retrievalResult.SelectedChunks);
 
         await foreach (var chunk in StreamLLMAsync(prompt, cancellationToken))
         {
@@ -90,7 +82,7 @@ public class RagRetrievalService : IRagRetrievalService
         }
 
         // Append sources at the end
-        var sources = FormatSources(compressedContext);
+        var sources = FormatSources(retrievalResult.SelectedChunks);
         if (!string.IsNullOrEmpty(sources))
         {
             yield return sources;
@@ -121,35 +113,30 @@ public class RagRetrievalService : IRagRetrievalService
         }
     }
 
-    private string FormatContextOnly(string question, RetrievalResult retrievalResult)
+    private string FormatContextOnly(RetrievalResult retrievalResult)
     {
-        var compressedContext = _compressor.Compress(
-            retrievalResult.SelectedChunks,
-            question,
-            "EN");
-
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine(compressedContext.Summary);
-        sb.Append(FormatSources(compressedContext));
+        sb.AppendLine(retrievalResult.Context);
+        sb.Append(FormatSources(retrievalResult.SelectedChunks));
         return sb.ToString();
     }
 
     /// <summary>
     /// Format sources for display.
     /// </summary>
-    private static string FormatSources(CompressedContext context)
+    private static string FormatSources(IReadOnlyList<ScoredChunk> chunks)
     {
-        if (context.Items.Count == 0)
+        if (chunks.Count == 0)
             return string.Empty;
 
-        var sourceLines = context.Items
-            .Select(i =>
+        var sourceLines = chunks
+            .Select((chunk, index) =>
             {
-                var parts = new List<string> { $"[{i.Index}] {i.DocName ?? "Unknown"}" };
-                if (i.Page.HasValue)
-                    parts.Add($"Page {i.Page}");
-                if (!string.IsNullOrEmpty(i.Section))
-                    parts.Add(i.Section);
+                var parts = new List<string> { $"[{index + 1}] {chunk.DocName ?? "Unknown"}" };
+                if (chunk.Page.HasValue)
+                    parts.Add($"Page {chunk.Page}");
+                if (!string.IsNullOrEmpty(chunk.SectionTitle))
+                    parts.Add(chunk.SectionTitle);
                 return string.Join(" - ", parts);
             });
 

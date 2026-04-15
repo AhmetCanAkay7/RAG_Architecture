@@ -5,6 +5,7 @@ using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.Concrete;
 using SK_UserGuide.Services.Ingestion;
+using SK_UserGuide.Services.LLM;
 using SK_UserGuide.Services.Retrieval;
 using System.Text;
 
@@ -89,15 +90,15 @@ builder.Services.AddSingleton(kernelBuilder.Build());
 switch (llmSettings.Provider)
 {
     case "OpenAI":
-        builder.Services.AddSingleton<Microsoft.SemanticKernel.Embeddings.ITextEmbeddingGenerationService>(sp =>
+        builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(sp =>
         {
             var tempBuilder = Microsoft.SemanticKernel.Kernel.CreateBuilder();
 
-            tempBuilder.AddOpenAITextEmbeddingGeneration(
+            tempBuilder.AddOpenAIEmbeddingGenerator(
                 modelId: llmSettings.EmbeddingModel,
                 apiKey: openAiSettings.ApiKey);
 
-            return tempBuilder.Build().GetRequiredService<Microsoft.SemanticKernel.Embeddings.ITextEmbeddingGenerationService>();
+            return tempBuilder.Build().GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
         });
         break;
 
@@ -112,9 +113,8 @@ switch (llmSettings.Provider)
 builder.Services.AddHttpClient<IHybridRetrievalService, HybridRetrievalService>();
 
 // 6. Response Cache (in-memory, singleton)
-builder.Services.AddSingleton<SK_UserGuide.Services.Chat.ResponseCache>();
-
 // 7. RAG Services
+builder.Services.AddScoped<PromptBuilder>();
 builder.Services.AddScoped<IRagRetrievalService, RagRetrievalService>();
 builder.Services.AddScoped<IRagService, RagService>();
 

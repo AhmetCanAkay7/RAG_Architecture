@@ -129,17 +129,11 @@ public partial class RagApiController : ControllerBase
             // Collect streamed response
             var responseBuilder = new System.Text.StringBuilder();
             var sources = new List<SourceInfo>();
-            var chunkCount = 0;
 
             await foreach (var chunk in _ragService.AskStreamingAsync(request.Question, request.TenantId))
             {
-                chunkCount++;
                 responseBuilder.Append(chunk);
             }
-
-            // Cache returns complete response as single chunk
-            // Streaming LLM returns many small chunks
-            var fromCache = chunkCount == 1 && responseBuilder.Length > 50;
 
             var fullResponse = responseBuilder.ToString();
 
@@ -149,14 +143,14 @@ public partial class RagApiController : ControllerBase
             // Clean answer (remove source section for API response)
             var answer = CleanAnswer(fullResponse);
 
-            _logger.LogInformation("RAG API response generated, length: {Length}, fromCache: {FromCache}, Tenant: {TenantId}",
-                answer.Length, fromCache, request.TenantId);
+            _logger.LogInformation("RAG API response generated, length: {Length}, Tenant: {TenantId}",
+                answer.Length, request.TenantId);
 
             return Ok(new RagAnswerResponse
             {
                 Answer = answer,
                 Sources = sources,
-                FromCache = fromCache
+                FromCache = false
             });
         }
         catch (Exception ex)

@@ -5,7 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>SK_UserGuide</RootNamespace>
-	<NoWarn>SKEXP0001;SKEXP0011;SKEXP0020;SKEXP0050;$(NoWarn)</NoWarn>
+  <NoWarn>SKEXP0001;SKEXP0010;SKEXP0011;SKEXP0020;SKEXP0050;$(NoWarn)</NoWarn>
     <UserSecretsId>sk-userguide-rag-secrets</UserSecretsId>
   </PropertyGroup>
 

@@ -1,4 +1,5 @@
 using System.Text;
+using SK_UserGuide.Services.Retrieval;
 
 namespace SK_UserGuide.Services.LLM;
 
@@ -24,17 +25,17 @@ RULES:
     /// <summary>
     /// Build the complete prompt for LLM.
     /// </summary>
-    public string Build(string question, CompressedContext context)
+    public string Build(string question, IReadOnlyList<ScoredChunk> chunks)
     {
-        return BuildWithHistory(question, context, null);
+        return BuildWithHistory(question, chunks, null);
     }   
 
     /// <summary>
     /// Build the complete prompt for LLM with optional chat history.
     /// </summary>
-    public string BuildWithHistory(string question, CompressedContext context, string? conversationHistory = null)
+    public string BuildWithHistory(string question, IReadOnlyList<ScoredChunk> chunks, string? conversationHistory = null)
     {
-        var formattedContext = FormatContext(context);
+        var formattedContext = FormatContext(chunks);
         var sb = new StringBuilder();
 
         sb.AppendLine(SystemPrompt);
@@ -61,19 +62,21 @@ RULES:
     /// <summary>
     /// Context format with source metadata for better LLM grounding.
     /// </summary>
-    private string FormatContext(CompressedContext context)
+    private string FormatContext(IReadOnlyList<ScoredChunk> chunks)
     {
         var sb = new StringBuilder();
-        foreach (var item in context.Items)
+        for (int i = 0; i < chunks.Count; i++)
         {
+            var chunk = chunks[i];
+            var index = i + 1;
             var meta = new List<string>();
-            if (!string.IsNullOrEmpty(item.DocName)) meta.Add($"Source: {item.DocName}");
-            if (item.Page.HasValue) meta.Add($"Page: {item.Page}");
-            if (!string.IsNullOrEmpty(item.Section)) meta.Add($"Section: {item.Section}");
+            if (!string.IsNullOrEmpty(chunk.DocName)) meta.Add($"Source: {chunk.DocName}");
+            if (chunk.Page.HasValue) meta.Add($"Page: {chunk.Page}");
+            if (!string.IsNullOrEmpty(chunk.SectionTitle)) meta.Add($"Section: {chunk.SectionTitle}");
 
             var metaStr = meta.Count > 0 ? $" ({string.Join(", ", meta)})" : "";
-            sb.AppendLine($"[{item.Index}]{metaStr}");
-            sb.AppendLine(item.Text);
+            sb.AppendLine($"[{index}]{metaStr}");
+            sb.AppendLine(chunk.Text);
             sb.AppendLine();
         }
         return sb.ToString().Trim();
