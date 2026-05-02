@@ -51,11 +51,13 @@ Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 // ──────────────────────────────────────────────
 builder.Services.Configure<LlmSettings>(builder.Configuration.GetSection("Llm"));
 builder.Services.Configure<OpenAiSettings>(builder.Configuration.GetSection("OpenAI"));
+builder.Services.Configure<AzureOpenAiSettings>(builder.Configuration.GetSection("AzureOpenAI"));
 builder.Services.Configure<QdrantSettings>(builder.Configuration.GetSection("Qdrant"));
 builder.Services.Configure<RagSettings>(builder.Configuration.GetSection("Rag"));
 
 var llmSettings = builder.Configuration.GetSection("Llm").Get<LlmSettings>() ?? new LlmSettings();
 var openAiSettings = builder.Configuration.GetSection("OpenAI").Get<OpenAiSettings>() ?? new OpenAiSettings();
+var azureSettings = builder.Configuration.GetSection("AzureOpenAI").Get<AzureOpenAiSettings>() ?? new AzureOpenAiSettings();
 
 // ──────────────────────────────────────────────
 // 2. Qdrant HTTP Client
@@ -77,9 +79,24 @@ switch (llmSettings.Provider)
             apiKey: openAiSettings.ApiKey);
         break;
 
+    case "AzureOpenAI":
+        ValidateAzureSettings(azureSettings);
+
+        kernelBuilder.AddAzureOpenAIChatCompletion(
+            deploymentName: azureSettings.ChatDeploymentName,
+            endpoint: azureSettings.Endpoint,
+            apiKey: azureSettings.ApiKey);
+        break;
+
+    // Future providers can be added here:
+    // case "Claude":
+    //     kernelBuilder.AddChatCompletion(...);
+    //     break;
+
     default:
         throw new InvalidOperationException(
-            $"Unsupported LLM provider: '{llmSettings.Provider}'. Supported: OpenAI");
+            $"Unsupported LLM provider: '{llmSettings.Provider}'. " +
+            $"Supported providers: OpenAI, AzureOpenAI");
 }
 
 builder.Services.AddSingleton(kernelBuilder.Build());
@@ -102,6 +119,15 @@ switch (llmSettings.Provider)
         });
         break;
 
+    case "AzureOpenAI":
+#pragma warning disable SKEXP0010
+        builder.Services.AddAzureOpenAIEmbeddingGenerator(
+            deploymentName: azureSettings.EmbeddingDeploymentName,
+            endpoint: azureSettings.Endpoint,
+            apiKey: azureSettings.ApiKey);
+#pragma warning restore SKEXP0010
+        break;
+
     default:
         throw new InvalidOperationException(
             $"No embedding generator configured for provider: '{llmSettings.Provider}'");
@@ -112,14 +138,13 @@ switch (llmSettings.Provider)
 // ──────────────────────────────────────────────
 builder.Services.AddHttpClient<IHybridRetrievalService, HybridRetrievalService>();
 
-// 6. Response Cache (in-memory, singleton)
-// 7. RAG Services
+// 6. RAG Services
 builder.Services.AddScoped<PromptBuilder>();
 builder.Services.AddScoped<IRagRetrievalService, RagRetrievalService>();
 builder.Services.AddScoped<IRagService, RagService>();
 
 // ──────────────────────────────────────────────
-// 8. Ingestion Pipeline Services
+// 7. Ingestion Pipeline Services
 // ──────────────────────────────────────────────
 builder.Services.AddScoped<TextCleaner>();
 builder.Services.AddScoped<PdfTextExtractor>();
@@ -172,6 +197,28 @@ static void ValidateOpenAiSettings(OpenAiSettings settings)
     {
         throw new InvalidOperationException(
             "OpenAI configuration is incomplete. " +
+            "Please set the following via environment variables or user-secrets:\n" +
+            string.Join("\n", errors.Select(e => $"  - {e}")));
+    }
+}
+
+static void ValidateAzureSettings(AzureOpenAiSettings settings)
+{
+    var errors = new List<string>();
+
+    if (string.IsNullOrWhiteSpace(settings.Endpoint))
+        errors.Add("AzureOpenAI:Endpoint is not configured");
+    if (string.IsNullOrWhiteSpace(settings.ApiKey))
+        errors.Add("AzureOpenAI:ApiKey is not configured");
+    if (string.IsNullOrWhiteSpace(settings.ChatDeploymentName))
+        errors.Add("AzureOpenAI:ChatDeploymentName is not configured");
+    if (string.IsNullOrWhiteSpace(settings.EmbeddingDeploymentName))
+        errors.Add("AzureOpenAI:EmbeddingDeploymentName is not configured");
+
+    if (errors.Count > 0)
+    {
+        throw new InvalidOperationException(
+            "Azure OpenAI configuration is incomplete. " +
             "Please set the following via environment variables or user-secrets:\n" +
             string.Join("\n", errors.Select(e => $"  - {e}")));
     }
