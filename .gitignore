@@ -370,3 +370,4 @@ appsettings.*.local.json
 
 # Qdrant local storage
 qdrant-storage/
+PROJECT_CONTEXT.md
