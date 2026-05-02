@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.OpenAI;
@@ -19,26 +20,19 @@ public class RagRetrievalService : IRagRetrievalService
     private readonly Kernel _kernel;
     private readonly PromptBuilder _promptBuilder;
     private readonly LlmSettings _llmSettings;
-    private readonly QdrantSettings _qdrantSettings;
     private readonly string _responseMode;
-
-    private const string ChatSystemPrompt =
-        "You are a helpful assistant. Respond professionally and clearly. " +
-        "If you don't know the answer, say so honestly.";
 
     public RagRetrievalService(
         IHybridRetrievalService hybridRetrieval,
         Kernel kernel,
         IOptions<RagSettings> ragSettings,
         IOptions<LlmSettings> llmSettings,
-        IOptions<QdrantSettings> qdrantSettings,
         PromptBuilder promptBuilder)
     {
         _hybridRetrieval = hybridRetrieval;
         _kernel = kernel;
         _promptBuilder = promptBuilder;
         _llmSettings = llmSettings.Value;
-        _qdrantSettings = qdrantSettings.Value;
         _responseMode = ragSettings.Value.ResponseMode;
     }
 
@@ -55,14 +49,10 @@ public class RagRetrievalService : IRagRetrievalService
         // 1. Get context from vector DB
         var retrievalResult = await _hybridRetrieval.RetrieveAsync(question, collectionName);
 
-        // 2. No context → General chat (streaming)
+        // 2. No context -> return a tenant-scoped empty knowledge base message.
         if (retrievalResult.ChunkCount == 0)
         {
-            var chatPrompt = $"{ChatSystemPrompt}\n\nUser: {question}\nAssistant:";
-            await foreach (var chunk in StreamLLMAsync(chatPrompt, cancellationToken))
-            {
-                yield return chunk;
-            }
+            yield return "No relevant indexed content was found for this question in the selected tenant. Check that documents are uploaded to this tenant and try a more specific question.";
             yield break;
         }
 
@@ -76,10 +66,15 @@ public class RagRetrievalService : IRagRetrievalService
         // 4. Hybrid mode → Stream LLM response with sources
         var prompt = _promptBuilder.Build(question, retrievalResult.SelectedChunks);
 
+        var generatedAnswer = new StringBuilder();
         await foreach (var chunk in StreamLLMAsync(prompt, cancellationToken))
         {
+            generatedAnswer.Append(chunk);
             yield return chunk;
         }
+
+        if (ShouldSuppressSources(generatedAnswer.ToString()))
+            yield break;
 
         // Append sources at the end
         var sources = FormatSources(retrievalResult.SelectedChunks);
@@ -87,6 +82,13 @@ public class RagRetrievalService : IRagRetrievalService
         {
             yield return sources;
         }
+    }
+
+    private static bool ShouldSuppressSources(string answer)
+    {
+        return answer.Contains(
+            "The provided documents do not contain sufficient information to answer this question.",
+            StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -143,14 +145,11 @@ public class RagRetrievalService : IRagRetrievalService
         return "\n\n---\n📚 **Sources:**\n" + string.Join("\n", sourceLines);
     }
 
-    /// <summary>
-    /// Resolve collection name from tenant ID.
-    /// Falls back to default collection if tenant is empty.
-    /// </summary>
     private string ResolveCollectionName(string tenantId)
     {
-        return string.IsNullOrWhiteSpace(tenantId)
-            ? _qdrantSettings.DefaultCollection
-            : tenantId;
+        if (string.IsNullOrWhiteSpace(tenantId))
+            throw new ArgumentException("TenantId is required.", nameof(tenantId));
+
+        return tenantId.Trim();
     }
 }

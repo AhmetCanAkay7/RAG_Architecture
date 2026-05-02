@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using SK_UserGuide.Models.Api;
 using SK_UserGuide.Services.Abstract;
+using SK_UserGuide.Services.Concrete;
 
 namespace SK_UserGuide.Controllers;
 
@@ -32,10 +33,19 @@ public partial class RagApiController : ControllerBase
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(request.TenantId))
+        {
+            await WriteSSEAsync("error", new { error = "TenantId is required." }, cancellationToken);
+            await WriteSSEAsync("done", new { success = false }, cancellationToken);
+            return;
+        }
+
+        var tenantId = request.TenantId.Trim();
+
         try
         {
             _logger.LogInformation("RAG Streaming API request: {Question}, Tenant: {TenantId}",
-                request.Question, request.TenantId);
+                request.Question, tenantId);
 
             var fullResponse = new System.Text.StringBuilder();
             var sourcesStarted = false;
@@ -43,7 +53,7 @@ public partial class RagApiController : ControllerBase
             var sentLength = 0; // Track what we've actually sent
 
             // Stream each token as it arrives, but stop when sources section begins
-            await foreach (var chunk in _ragService.AskStreamingAsync(request.Question, request.TenantId, cancellationToken))
+            await foreach (var chunk in _ragService.AskStreamingAsync(request.Question, tenantId, cancellationToken))
             {
                 fullResponse.Append(chunk);
 
@@ -89,11 +99,21 @@ public partial class RagApiController : ControllerBase
             await WriteSSEAsync("done", new { fromCache = false }, cancellationToken);
 
             _logger.LogInformation("RAG Streaming completed for: {Question}, Tenant: {TenantId}",
-                request.Question, request.TenantId);
+                request.Question, tenantId);
         }
         catch (OperationCanceledException)
         {
             _logger.LogInformation("RAG Streaming cancelled by client");
+        }
+        catch (QdrantCollectionNotFoundException ex)
+        {
+            _logger.LogWarning(ex, "Tenant collection not found for streaming request: {TenantId}", tenantId);
+            await WriteSSEAsync("error", new
+            {
+                error = "Tenant collection was not found. Create the tenant and upload documents before asking questions.",
+                tenantId = ex.CollectionName
+            }, cancellationToken);
+            await WriteSSEAsync("done", new { success = false }, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -114,6 +134,7 @@ public partial class RagApiController : ControllerBase
     [HttpPost("ask")]
     [ProducesResponseType(typeof(RagAnswerResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Ask([FromBody] RagQuestionRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Question))
@@ -121,16 +142,23 @@ public partial class RagApiController : ControllerBase
             return BadRequest(new { error = "Question cannot be empty." });
         }
 
+        if (string.IsNullOrWhiteSpace(request.TenantId))
+        {
+            return BadRequest(new { error = "TenantId is required." });
+        }
+
+        var tenantId = request.TenantId.Trim();
+
         try
         {
             _logger.LogInformation("RAG API request: {Question}, Tenant: {TenantId}",
-                request.Question, request.TenantId);
+                request.Question, tenantId);
 
             // Collect streamed response
             var responseBuilder = new System.Text.StringBuilder();
             var sources = new List<SourceInfo>();
 
-            await foreach (var chunk in _ragService.AskStreamingAsync(request.Question, request.TenantId))
+            await foreach (var chunk in _ragService.AskStreamingAsync(request.Question, tenantId))
             {
                 responseBuilder.Append(chunk);
             }
@@ -144,13 +172,22 @@ public partial class RagApiController : ControllerBase
             var answer = CleanAnswer(fullResponse);
 
             _logger.LogInformation("RAG API response generated, length: {Length}, Tenant: {TenantId}",
-                answer.Length, request.TenantId);
+                answer.Length, tenantId);
 
             return Ok(new RagAnswerResponse
             {
                 Answer = answer,
                 Sources = sources,
                 FromCache = false
+            });
+        }
+        catch (QdrantCollectionNotFoundException ex)
+        {
+            _logger.LogWarning(ex, "Tenant collection not found for question: {Question}", request.Question);
+            return NotFound(new
+            {
+                error = "Tenant collection was not found. Create the tenant and upload documents before asking questions.",
+                tenantId = ex.CollectionName
             });
         }
         catch (Exception ex)

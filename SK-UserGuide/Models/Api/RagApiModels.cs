@@ -9,10 +9,10 @@ public record RagQuestionRequest
 
     /// <summary>
     /// Tenant identifier for collection routing.
-    /// Defaults to "default" if not specified.
+    /// Required for collection routing.
     /// Examples: "hr-bot", "planning-team", "it-support"
     /// </summary>
-    public string TenantId { get; init; } = "default";
+    public required string TenantId { get; init; }
 }
 
 public record RagAnswerResponse

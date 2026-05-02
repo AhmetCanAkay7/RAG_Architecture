@@ -1,6 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
-using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Abstract;
 using SK_UserGuide.Services.Concrete;
 using SK_UserGuide.Services.Ingestion;
@@ -12,24 +10,19 @@ namespace SK_UserGuide.Controllers
         private readonly IDocumentIngestionOrchestrator _ingestionOrchestrator;
         private readonly IQdrantIngestionRepository _qdrantRepo;
         private readonly QdrantRestClient _qdrantClient;
-        private readonly QdrantSettings _qdrantSettings;
 
         public AdminController(
             IDocumentIngestionOrchestrator ingestionOrchestrator,
             IQdrantIngestionRepository qdrantRepo,
-            QdrantRestClient qdrantClient,
-            IOptions<QdrantSettings> qdrantOptions)
+            QdrantRestClient qdrantClient)
         {
             _ingestionOrchestrator = ingestionOrchestrator;
             _qdrantRepo = qdrantRepo;
             _qdrantClient = qdrantClient;
-            _qdrantSettings = qdrantOptions.Value;
         }
 
         public async Task<IActionResult> Index(string? tenantId = null)
         {
-            tenantId ??= _qdrantSettings.DefaultCollection;
-            ViewBag.TenantId = tenantId;
             return await LoadIndexViewAsync(tenantId);
         }
 
@@ -37,8 +30,16 @@ namespace SK_UserGuide.Controllers
         /// Upload a document to a specific tenant collection.
         /// </summary>
         [HttpPost]
-        public async Task<IActionResult> Upload(IFormFile file, string tenantId = "default")
+        public async Task<IActionResult> Upload(IFormFile file, string tenantId)
         {
+            if (string.IsNullOrWhiteSpace(tenantId))
+            {
+                TempData["Error"] = "Please select or create a tenant collection before uploading.";
+                return RedirectToAction("Index");
+            }
+
+            tenantId = tenantId.Trim();
+
             if (file == null || file.Length == 0)
             {
                 TempData["Error"] = "Please select a file.";
@@ -63,14 +64,44 @@ namespace SK_UserGuide.Controllers
             return RedirectToAction("Index", new { tenantId });
         }
 
-        private async Task<IActionResult> LoadIndexViewAsync(string tenantId)
+        private async Task<IActionResult> LoadIndexViewAsync(string? requestedTenantId)
         {
+            var tenants = new List<string>();
+            string? tenantId = null;
+
             try
             {
-                var documents = await _qdrantRepo.GetAllDocumentsAsync(tenantId);
-                ViewBag.Documents = documents;
+                tenants = await _qdrantClient.ListCollectionsAsync();
+                if (!string.IsNullOrWhiteSpace(requestedTenantId) && tenants.Contains(requestedTenantId))
+                {
+                    tenantId = requestedTenantId;
+                }
+                else
+                {
+                    tenantId = tenants.FirstOrDefault();
+                }
             }
             catch
+            {
+                TempData["Error"] ??= "Tenant collections could not be loaded. Check the Qdrant connection.";
+            }
+
+            ViewBag.Tenants = tenants;
+            ViewBag.TenantId = tenantId ?? string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(tenantId))
+            {
+                try
+                {
+                    var documents = await _qdrantRepo.GetAllDocumentsAsync(tenantId);
+                    ViewBag.Documents = documents;
+                }
+                catch
+                {
+                    ViewBag.Documents = new List<DocumentInfo>();
+                }
+            }
+            else
             {
                 ViewBag.Documents = new List<DocumentInfo>();
             }
@@ -82,16 +113,21 @@ namespace SK_UserGuide.Controllers
         /// Delete a document by doc_id from a specific tenant collection.
         /// </summary>
         [HttpPost]
-        public async Task<IActionResult> DeleteDocument(string docId, string tenantId = "default")
+        public async Task<IActionResult> DeleteDocument(string docId, string tenantId)
         {
             if (string.IsNullOrWhiteSpace(docId))
             {
                 return Json(new { success = false, message = "DocId is required." });
             }
 
+            if (string.IsNullOrWhiteSpace(tenantId))
+            {
+                return Json(new { success = false, message = "TenantId is required." });
+            }
+
             try
             {
-                await _qdrantRepo.DeleteByDocIdAsync(tenantId, docId);
+                await _qdrantRepo.DeleteByDocIdAsync(tenantId.Trim(), docId);
                 return Json(new { success = true, message = "Document deleted successfully." });
             }
             catch (Exception ex)
@@ -104,12 +140,17 @@ namespace SK_UserGuide.Controllers
         /// Get list of all documents in a tenant collection (JSON API).
         /// </summary>
         [HttpGet]
-        public async Task<IActionResult> GetDocuments(string tenantId = "default")
+        public async Task<IActionResult> GetDocuments(string tenantId)
         {
+            if (string.IsNullOrWhiteSpace(tenantId))
+            {
+                return Json(new { success = false, message = "TenantId is required.", documents = Array.Empty<object>() });
+            }
+
             try
             {
-                var documents = await _qdrantRepo.GetAllDocumentsAsync(tenantId);
-                return Json(new { success = true, documents, tenantId });
+                var documents = await _qdrantRepo.GetAllDocumentsAsync(tenantId.Trim());
+                return Json(new { success = true, documents, tenantId = tenantId.Trim() });
             }
             catch (Exception ex)
             {
@@ -132,6 +173,8 @@ namespace SK_UserGuide.Controllers
             {
                 return Json(new { success = false, message = "TenantId is required." });
             }
+
+            tenantId = tenantId.Trim();
 
             try
             {
@@ -173,6 +216,8 @@ namespace SK_UserGuide.Controllers
             {
                 return Json(new { success = false, message = "TenantId is required." });
             }
+
+            tenantId = tenantId.Trim();
 
             try
             {

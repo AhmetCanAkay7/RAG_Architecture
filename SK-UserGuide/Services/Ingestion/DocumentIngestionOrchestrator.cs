@@ -98,6 +98,7 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
             }
 
             _logger.LogInformation("Created {ChunkCount} chunks from {FileName}", chunks.Count, fileName);
+            LogChunkQuality(fileName, tenantId, chunks);
 
             // 4. Ensure collection exists and clear existing chunks
             await _qdrantRepo.EnsureCollectionAsync(tenantId);
@@ -154,5 +155,40 @@ public class DocumentIngestionOrchestrator : IDocumentIngestionOrchestrator
                 Message = $"Error: {ex.Message}"
             };
         }
+    }
+
+    private void LogChunkQuality(string fileName, string tenantId, List<ChunkResult> chunks)
+    {
+        var minTokens = chunks.Min(c => c.EstimatedTokens);
+        var avgTokens = chunks.Average(c => c.EstimatedTokens);
+        var maxTokens = chunks.Max(c => c.EstimatedTokens);
+        var overlapCount = chunks.Count(c => c.HasOverlap);
+        var sectionSamples = chunks
+            .Select(c => c.SectionTitle)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct()
+            .Take(5)
+            .ToList();
+
+        var allTextLength = chunks.Sum(c => c.Text.Length);
+        var suspectCharCount = chunks.Sum(c => c.Text.Count(IsMojibakeMarker));
+        var suspectCharRatio = allTextLength == 0 ? 0 : (double)suspectCharCount / allTextLength;
+
+        _logger.LogInformation(
+            "Chunk quality for {FileName} in tenant {TenantId}: count={ChunkCount}, tokens min/avg/max={MinTokens}/{AvgTokens:F0}/{MaxTokens}, overlaps={OverlapCount}, suspectCharRatio={SuspectCharRatio:P2}, sectionSamples=[{SectionSamples}]",
+            fileName,
+            tenantId,
+            chunks.Count,
+            minTokens,
+            avgTokens,
+            maxTokens,
+            overlapCount,
+            suspectCharRatio,
+            string.Join(" | ", sectionSamples));
+    }
+
+    private static bool IsMojibakeMarker(char c)
+    {
+        return c is 'Ã' or 'Ä' or 'Å' or 'Â' or 'â' or '�';
     }
 }

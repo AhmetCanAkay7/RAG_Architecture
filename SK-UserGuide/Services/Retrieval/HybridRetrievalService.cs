@@ -30,7 +30,9 @@ public class HybridRetrievalService : IHybridRetrievalService
     private const int MaxResultCount = 7;
     private const int RrfK = 60;
     private const double ThresholdRatio = 0.6;
-    private const double AbsoluteMinScore = 0.02;  // Absolute minimum RRF score threshold
+    // A single dense or sparse hit starts at 1 / (RrfK + 1), around 0.016.
+    // Keep this lower so single-channel matches are not discarded.
+    private const double AbsoluteMinScore = 0.005;
 
     private readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -60,6 +62,9 @@ public class HybridRetrievalService : IHybridRetrievalService
     /// <param name="collectionName">Target Qdrant collection.</param>
     public async Task<RetrievalResult> RetrieveAsync(string question, string collectionName)
     {
+        if (!await _qdrantClient.CollectionExistsAsync(collectionName))
+            throw new QdrantCollectionNotFoundException(collectionName);
+
         // 1. Generate question embedding
         var embeddings = await _embeddingGenerator.GenerateAsync([question]);
         var queryVector = embeddings.First().Vector.ToArray();
@@ -123,60 +128,38 @@ public class HybridRetrievalService : IHybridRetrievalService
 
             Console.WriteLine($"[Sparse Search] Keywords: {string.Join(", ", normalizedKeywords)}");
 
-            // Build keyword query string for text_any
-            var keywordQuery = string.Join(" ", normalizedKeywords);
+            var points = await ScrollByKeywordFieldAsync(
+                collectionName,
+                "text_normalized",
+                normalizedKeywords.Select(SearchTextNormalizer.ToSearchText).Distinct().ToList());
 
-            // Use Qdrant scroll with text_any filter (server-side indexed search)
-            var scrollRequest = new
+            if (points.Count == 0)
             {
-                filter = new
-                {
-                    must = new[]
-                    {
-                        new
-                        {
-                            key = "text",
-                            match = new { text_any = keywordQuery }
-                        }
-                    }
-                },
-                limit = SparseCandidateLimit,
-                with_payload = true,
-                with_vector = false
-            };
-
-            var response = await _httpClient.PostAsJsonAsync(
-                $"/collections/{collectionName}/points/scroll",
-                scrollRequest,
-                _jsonOptions);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"[Sparse Search] Filter failed: {response.StatusCode} - {errorContent}");
-                return new List<QdrantRestClient.SearchResult>();
+                points = await ScrollByKeywordFieldAsync(collectionName, "text", normalizedKeywords);
             }
 
-            var result = await response.Content.ReadFromJsonAsync<ScrollResponse>(_jsonOptions);
-
-            if (result?.Result?.Points == null || result.Result.Points.Count == 0)
+            if (points.Count == 0)
             {
                 Console.WriteLine("[Sparse Search] No matches found");
                 return new List<QdrantRestClient.SearchResult>();
             }
 
-            Console.WriteLine($"[Sparse Search] Found {result.Result.Points.Count} matches via full-text index");
+            Console.WriteLine($"[Sparse Search] Found {points.Count} matches via full-text index");
 
             // Calculate keyword match score for each result (for RRF fusion)
             var scoredResults = new List<QdrantRestClient.SearchResult>();
 
-            foreach (var point in result.Result.Points)
+            foreach (var point in points)
             {
-                var text = GetPayloadString(point.Payload, "text")?.ToLowerInvariant() ?? "";
+                var text = SearchTextNormalizer.ToSearchText(GetPayloadString(point.Payload, "text"));
 
                 // Count how many keywords appear (for scoring)
-                var matchCount = normalizedKeywords.Count(kw => text.Contains(kw));
-                var score = (float)matchCount / normalizedKeywords.Count;
+                var normalizedForScoring = normalizedKeywords
+                    .Select(SearchTextNormalizer.ToSearchText)
+                    .Distinct()
+                    .ToList();
+                var matchCount = normalizedForScoring.Count(kw => text.Contains(kw));
+                var score = (float)matchCount / normalizedForScoring.Count;
 
                 scoredResults.Add(new QdrantRestClient.SearchResult
                 {
@@ -201,6 +184,52 @@ public class HybridRetrievalService : IHybridRetrievalService
             Console.WriteLine($"[Sparse Search] Exception: {ex.Message}");
             return new List<QdrantRestClient.SearchResult>();
         }
+    }
+
+    private async Task<List<ScrollPoint>> ScrollByKeywordFieldAsync(
+        string collectionName,
+        string fieldName,
+        List<string> keywords)
+    {
+        var keywordQuery = string.Join(" ", keywords
+            .Where(kw => !string.IsNullOrWhiteSpace(kw))
+            .Distinct());
+
+        if (string.IsNullOrWhiteSpace(keywordQuery))
+            return new List<ScrollPoint>();
+
+        var scrollRequest = new
+        {
+            filter = new
+            {
+                must = new[]
+                {
+                    new
+                    {
+                        key = fieldName,
+                        match = new { text_any = keywordQuery }
+                    }
+                }
+            },
+            limit = SparseCandidateLimit,
+            with_payload = true,
+            with_vector = false
+        };
+
+        var response = await _httpClient.PostAsJsonAsync(
+            $"/collections/{collectionName}/points/scroll",
+            scrollRequest,
+            _jsonOptions);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"[Sparse Search] {fieldName} filter failed: {response.StatusCode} - {errorContent}");
+            return new List<ScrollPoint>();
+        }
+
+        var result = await response.Content.ReadFromJsonAsync<ScrollResponse>(_jsonOptions);
+        return result?.Result?.Points ?? new List<ScrollPoint>();
     }
 
     private ulong? ParseNextPageOffset(JsonElement? element)

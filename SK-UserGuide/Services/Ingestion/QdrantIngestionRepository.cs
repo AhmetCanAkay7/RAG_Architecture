@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using SK_UserGuide.Configuration;
 using SK_UserGuide.Services.Abstract;
+using SK_UserGuide.Services.Retrieval;
 
 namespace SK_UserGuide.Services.Ingestion;
 
@@ -77,6 +78,7 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
 
         // Create full-text index for sparse search
         await CreateFullTextIndexAsync(collectionName, "text");
+        await CreateFullTextIndexAsync(collectionName, "text_normalized");
     }
 
     /// <summary>
@@ -167,6 +169,7 @@ public class QdrantIngestionRepository : IQdrantIngestionRepository, IDisposable
                     created_at = payload.CreatedAt.ToString("o"),
                     chunk_index = payload.ChunkIndex,
                     text = payload.Text,
+                    text_normalized = SearchTextNormalizer.ToSearchText(payload.Text),
                     language = payload.Language,
                     content_hash = payload.ContentHash,
                     page = payload.Page,

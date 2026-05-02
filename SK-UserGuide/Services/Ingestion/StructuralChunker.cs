@@ -52,7 +52,7 @@ public class StructuralChunker
 
     /// <summary>
     /// Chunk a document into semantically meaningful pieces.
-    /// Updated with: heading lookahead, StepList merge capability.
+    /// Updated with: section-safe heading boundaries, StepList merge capability.
     /// </summary>
     public List<ChunkResult> Chunk(ExtractedDocument document)
     {
@@ -79,54 +79,18 @@ public class StructuralChunker
             if (block.Type == BlockType.Empty || string.IsNullOrWhiteSpace(block.Text))
                 continue;
 
-            // === HEADING BLOCK WITH LOOKAHEAD ===
+            // === HEADING BLOCK ===
             if (block.Type == BlockType.Heading)
             {
-                // Find next non-empty content block
-                StructuralBlock? nextContentBlock = null;
-                for (int j = i + 1; j < blocks.Count; j++)
+                // Headings start a fresh chunk to avoid mixing sections and metadata.
+                if (currentChunk.HasContent)
                 {
-                    if (blocks[j].Type != BlockType.Empty && !string.IsNullOrWhiteSpace(blocks[j].Text))
-                    {
-                        nextContentBlock = blocks[j];
-                        break;
-                    }
+                    chunks.Add(currentChunk.Build(chunkIndex++, _contextBuilder.GetFullSectionPath()));
+                    currentChunk = new ChunkBuilder(CountTokens);
                 }
 
-                // Calculate lookahead tokens
-                int lookaheadTokens;
-                if (nextContentBlock != null && nextContentBlock.Type != BlockType.Table)
-                {
-                    lookaheadTokens = CountTokens(block.Text + "\n\n" + nextContentBlock.Text);
-                }
-                else
-                {
-                    // End of doc or next is table - just count heading
-                    lookaheadTokens = CountTokens(block.Text);
-                }
-
-                // Check if heading + next content fits in current chunk
-                if (currentChunk.HasContent &&
-                    (currentChunk.TokenCount + lookaheadTokens) <= TargetTokenMax)
-                {
-                    // DO NOT close current chunk - append heading to it
-                    currentChunk.AppendRawText("\n\n" + block.Text);
-                    // Update breadcrumb for future blocks (but don't change current chunk's initial metadata)
-                    _contextBuilder.ProcessHeading(block.Text);
-                }
-                else
-                {
-                    // Close current chunk if it has content
-                    if (currentChunk.HasContent)
-                    {
-                        chunks.Add(currentChunk.Build(chunkIndex++, _contextBuilder.GetFullSectionPath()));
-                        currentChunk = new ChunkBuilder(CountTokens);
-                    }
-
-                    // Update breadcrumb and start new chunk with heading
-                    _contextBuilder.ProcessHeading(block.Text);
-                    currentChunk.AppendWithContext(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath());
-                }
+                _contextBuilder.ProcessHeading(block.Text);
+                currentChunk.AppendWithContext(block, _contextBuilder.BuildContextPrefix(), _contextBuilder.GetFullSectionPath());
                 continue;
             }
 
@@ -340,8 +304,9 @@ public class StructuralChunker
         // Markdown headings
         if (trimmed.StartsWith('#')) return BlockType.Heading;
 
-        // Numbered headings: "1. Introduction", "2.1 Sub Heading"
-        if (Regex.IsMatch(trimmed, @"^(\d+\.)+\s+[A-Z][a-z]") && trimmed.Length < 80)
+        // Numbered headings: "1. Introduction", "2.1 Sub Heading".
+        // Numbered list items usually end with sentence punctuation, so keep them as StepList.
+        if (IsNumberedHeading(trimmed))
             return BlockType.Heading;
 
         // All caps headings (common in PDFs)
@@ -371,6 +336,25 @@ public class StructuralChunker
             return BlockType.StepList;
 
         return BlockType.Paragraph;
+    }
+
+    private bool IsNumberedHeading(string trimmed)
+    {
+        if (Regex.IsMatch(trimmed, @"^\d+\)"))
+            return false;
+
+        var match = Regex.Match(trimmed, @"^\d+(?:\.\d+)*(?:[.)])?\s+\S.+$");
+        if (!match.Success || trimmed.Length > 100)
+            return false;
+
+        if (trimmed.EndsWith('.') || trimmed.EndsWith('!') || trimmed.EndsWith('?'))
+            return false;
+
+        var textAfterNumber = Regex.Replace(trimmed, @"^\d+(?:\.\d+)*(?:[.)])?\s+", "");
+        var wordCount = Regex.Split(textAfterNumber.Trim(), @"\s+")
+            .Count(w => !string.IsNullOrWhiteSpace(w));
+
+        return wordCount <= 10;
     }
 
     /// <summary>

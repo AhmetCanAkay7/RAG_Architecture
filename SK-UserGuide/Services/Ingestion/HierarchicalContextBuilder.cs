@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace SK_UserGuide.Services.Ingestion;
 
 public class HierarchicalContextBuilder
@@ -25,6 +27,10 @@ public class HierarchicalContextBuilder
             currentLevel = trimmed.TakeWhile(c => c == '#').Count();
             cleanText = trimmed.TrimStart('#', ' ').Trim();
         }
+        else if (TryParseNumberedHeading(line, out currentLevel, out cleanText))
+        {
+            // Numbered headings: "1. Title", "1.2 Title", "1.2.3 Title"
+        }
         else
         {
             // Non-markdown heading (numbered, all caps, etc.)
@@ -45,6 +51,24 @@ public class HierarchicalContextBuilder
 
         // Push new heading
         _headingStack.Push((currentLevel, cleanText));
+    }
+
+    private static bool TryParseNumberedHeading(string line, out int level, out string cleanText)
+    {
+        level = 1;
+        cleanText = string.Empty;
+
+        var match = Regex.Match(line.Trim(), @"^(?<number>\d+(?:\.\d+)*)(?:[.)])?\s+(?<title>\S.+)$");
+        if (!match.Success)
+            return false;
+
+        var title = match.Groups["title"].Value.Trim();
+        if (string.IsNullOrWhiteSpace(title))
+            return false;
+
+        level = match.Groups["number"].Value.Split('.').Length;
+        cleanText = $"{match.Groups["number"].Value} {title}";
+        return true;
     }
 
     /// <summary>

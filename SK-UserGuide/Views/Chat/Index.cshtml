@@ -1,5 +1,9 @@
 ﻿@{
     ViewData["Title"] = "AI Chatbot";
+    var tenants = ViewBag.Tenants as List<string> ?? new List<string>();
+    var selectedTenantId = ViewBag.SelectedTenantId as string ?? string.Empty;
+    var tenantLoadError = ViewBag.TenantLoadError as string;
+    var hasTenant = !string.IsNullOrWhiteSpace(selectedTenantId);
 }
 
 <style>
@@ -48,6 +52,32 @@
 
     .chat-header .info span {
         color: rgba(255, 255, 255, 0.7);
+        font-size: 13px;
+    }
+
+    .tenant-bar {
+        background: #ffffff;
+        border-bottom: 1px solid #e9ecef;
+        padding: 14px 25px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .tenant-bar label {
+        font-size: 13px;
+        font-weight: 600;
+        color: #495057;
+        margin: 0;
+        white-space: nowrap;
+    }
+
+    .tenant-bar select {
+        max-width: 320px;
+    }
+
+    .tenant-warning {
+        color: #b02a37;
         font-size: 13px;
     }
 
@@ -308,6 +338,31 @@
         </div>
     </div>
 
+    <div class="tenant-bar">
+        <label for="tenantSelect">Tenant</label>
+        <select id="tenantSelect" class="form-select form-select-sm" onchange="changeTenant()" @(tenants.Count == 0 ? "disabled" : "")>
+            @if (tenants.Count == 0)
+            {
+                    <option value="">No tenant collections yet</option>
+            }
+            else
+            {
+                @foreach (var tenant in tenants)
+                {
+                            <option value="@tenant" selected="@(tenant == selectedTenantId)">@tenant</option>
+                }
+            }
+        </select>
+        @if (!string.IsNullOrWhiteSpace(tenantLoadError))
+        {
+                <span class="tenant-warning">@tenantLoadError</span>
+        }
+        else if (!hasTenant)
+        {
+                <span class="tenant-warning">Create a tenant and upload documents in Admin before chatting.</span>
+        }
+    </div>
+
     <!-- Messages -->
     <div class="chat-messages" id="chatMessages">
         <div class="welcome-card">
@@ -336,8 +391,8 @@
     <!-- Input -->
     <div class="chat-input">
         <input type="text" id="questionInput" placeholder="Type your question here..." autocomplete="off"
-            onkeypress="handleKeyPress(event)">
-        <button class="btn-send" id="sendBtn" onclick="sendQuestion()">
+            onkeypress="handleKeyPress(event)" @(hasTenant ? "" : "disabled")>
+        <button class="btn-send" id="sendBtn" onclick="sendQuestion()" @(hasTenant ? "" : "disabled")>
             <span>?</span>
         </button>
     </div>
@@ -348,6 +403,8 @@
         const chatMessages = document.getElementById('chatMessages');
         const questionInput = document.getElementById('questionInput');
         const sendBtn = document.getElementById('sendBtn');
+        const tenantSelect = document.getElementById('tenantSelect');
+        const selectedTenantId = '@selectedTenantId';
 
         // Enter tu?u ile gönder
         function handleKeyPress(event) {
@@ -359,8 +416,18 @@
 
         // H?zl? soru sor
         function askQuickQuestion(question) {
+            if (!selectedTenantId) {
+                addMessage('Please create or select a tenant collection before asking a question.', false, true);
+                return;
+            }
             questionInput.value = question;
             sendQuestion();
+        }
+
+        function changeTenant() {
+            const tenantId = tenantSelect.value;
+            if (!tenantId) return;
+            window.location.href = '@Url.Action("Index", "Chat")' + '?tenantId=' + encodeURIComponent(tenantId);
         }
 
         // Format time
@@ -372,10 +439,13 @@
         function addMessage(text, isUser, isError = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'user' : (isError ? 'bot error' : 'bot')}`;
-            messageDiv.innerHTML = `
-                                            ${text}
-                                            <span class="time">${formatTime()}</span>
-                                        `;
+            const textNode = document.createElement('span');
+            textNode.textContent = text;
+            const timeNode = document.createElement('span');
+            timeNode.className = 'time';
+            timeNode.textContent = formatTime();
+            messageDiv.appendChild(textNode);
+            messageDiv.appendChild(timeNode);
             chatMessages.appendChild(messageDiv);
             scrollToBottom();
         }
@@ -388,9 +458,15 @@
         // Soru gönder - Streaming ile
         function sendQuestion() {
             const question = questionInput.value.trim();
+            const tenantId = selectedTenantId;
 
             if (!question) {
                 questionInput.focus();
+                return;
+            }
+
+            if (!tenantId) {
+                addMessage('Please create or select a tenant collection before asking a question.', false, true);
                 return;
             }
 
@@ -421,7 +497,9 @@
             let firstChunkReceived = false;
 
             // EventSource ile streaming bağlantısı
-            const streamUrl = '@Url.Action("AskStreaming", "Chat")' + '?question=' + encodeURIComponent(question);
+            const streamUrl = '@Url.Action("AskStreaming", "Chat")'
+                + '?question=' + encodeURIComponent(question)
+                + '&tenantId=' + encodeURIComponent(tenantId);
             const eventSource = new EventSource(streamUrl);
 
             eventSource.onmessage = function (event) {
@@ -461,7 +539,7 @@
                 eventSource.close();
 
                 if (fullText === '') {
-                    streamingText.innerHTML = '❌ An error occurred while connecting to the server.';
+                    streamingText.textContent = 'An error occurred while connecting to the server.';
                     botMessage.classList.add('error');
                 }
 
@@ -474,15 +552,23 @@
 
         // Basit Markdown formatlama
         function formatMarkdown(text) {
-            return text
+            return escapeHtml(text)
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')  // Bold
                 .replace(/\n/g, '<br>')  // Newlines
                 .replace(/---/g, '<hr>');  // Horizontal rule
         }
 
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         // Sayfa yüklendi?inde input'a focus
         document.addEventListener('DOMContentLoaded', () => {
-            questionInput.focus();
+            if (selectedTenantId) {
+                questionInput.focus();
+            }
         });
     </script>
 }

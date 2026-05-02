@@ -39,6 +39,15 @@ public static class KeywordExtractor
         "dont", "doesnt", "didnt", "isnt", "arent", "wasnt", "werent", "wont", "wouldnt", "cant", "couldnt", "shouldnt", "havent", "hasnt", "hadnt"
     };
 
+    private static readonly HashSet<string> TurkishStopwords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ve", "veya", "ile", "icin", "için", "bir", "bu", "su", "şu", "o", "da", "de", "mi", "mu", "mı", "mü",
+        "nedir", "nasil", "nasıl", "neden", "ne", "hangi", "kim", "nerede", "ne zaman", "lütfen", "lutfen",
+        "bana", "beni", "benim", "sana", "senin", "biz", "siz", "onlar", "var", "yok", "olan", "olarak",
+        "hakkinda", "hakkında", "gore", "göre", "kadar", "sonra", "once", "önce", "gibi", "ise", "ama",
+        "fakat", "ancak", "cok", "çok", "az", "daha", "en", "her", "tum", "tüm", "ayni", "aynı"
+    };
+
     public static List<string> Extract(string text, int maxKeywords = 15)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -59,7 +68,7 @@ public static class KeywordExtractor
         var tokens = Regex.Split(text, @"[\s\p{P}]+")
             .Where(w => w.Length > 2)
             .Select(w => w.ToLower(CultureInfo.InvariantCulture))
-            .Where(w => !EnglishStopwords.Contains(w))
+            .Where(w => !IsStopword(w))
             .Distinct()
             .ToList();
 
@@ -73,6 +82,7 @@ public static class KeywordExtractor
         }
 
         var result = keywords
+            .SelectMany(ExpandKeyword)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(maxKeywords)
             .ToList();
@@ -132,8 +142,8 @@ public static class KeywordExtractor
             var w2 = words[i + 1].ToLower(CultureInfo.InvariantCulture);
 
             // LOGIC: A phrase is meaningful if BOTH words are NOT noise.
-            bool w1IsContent = !EnglishStopwords.Contains(w1) && w1.Length > 2;
-            bool w2IsContent = !EnglishStopwords.Contains(w2) && w2.Length > 2;
+            bool w1IsContent = !IsStopword(w1) && w1.Length > 2;
+            bool w2IsContent = !IsStopword(w2) && w2.Length > 2;
 
             if (w1IsContent && w2IsContent)
             {
@@ -143,7 +153,7 @@ public static class KeywordExtractor
                 if (i < words.Length - 2)
                 {
                     var w3 = words[i + 2].ToLower(CultureInfo.InvariantCulture);
-                    bool w3IsContent = !EnglishStopwords.Contains(w3) && w3.Length > 2;
+                    bool w3IsContent = !IsStopword(w3) && w3.Length > 2;
 
                     if (w3IsContent)
                     {
@@ -154,5 +164,28 @@ public static class KeywordExtractor
         }
 
         return ngrams;
+    }
+
+    private static bool IsStopword(string word)
+    {
+        var normalized = SearchTextNormalizer.ToSearchText(word);
+        return EnglishStopwords.Contains(word) ||
+               TurkishStopwords.Contains(word) ||
+               TurkishStopwords.Contains(normalized);
+    }
+
+    private static IEnumerable<string> ExpandKeyword(string keyword)
+    {
+        if (string.IsNullOrWhiteSpace(keyword))
+            yield break;
+
+        yield return keyword;
+
+        var normalized = SearchTextNormalizer.ToSearchText(keyword);
+        if (!string.IsNullOrWhiteSpace(normalized) &&
+            !string.Equals(keyword, normalized, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return normalized;
+        }
     }
 }

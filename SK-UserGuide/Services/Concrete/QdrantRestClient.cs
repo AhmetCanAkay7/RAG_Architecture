@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -44,6 +45,22 @@ public class QdrantRestClient : IDisposable
 
         var result = await response.Content.ReadFromJsonAsync<CollectionsResponse>(_jsonOptions);
         return result?.Result?.Collections?.Select(c => c.Name).ToList() ?? new List<string>();
+    }
+
+    /// <summary>
+    /// Checks whether a tenant collection exists.
+    /// </summary>
+    public async Task<bool> CollectionExistsAsync(string collectionName)
+    {
+        if (string.IsNullOrWhiteSpace(collectionName))
+            return false;
+
+        var response = await _httpClient.GetAsync($"/collections/{collectionName}");
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return false;
+
+        response.EnsureSuccessStatusCode();
+        return true;
     }
 
     /// <summary>
@@ -121,6 +138,9 @@ public class QdrantRestClient : IDisposable
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync();
+            if (response.StatusCode == HttpStatusCode.NotFound)
+                throw new QdrantCollectionNotFoundException(collectionName);
+
             throw new HttpRequestException($"Qdrant search failed: {response.StatusCode} - {errorBody}");
         }
 

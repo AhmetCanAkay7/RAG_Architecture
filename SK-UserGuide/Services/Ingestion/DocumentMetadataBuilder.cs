@@ -45,12 +45,24 @@ public class DocumentMetadataBuilder
             CreatedAt = DateTime.UtcNow,
             ChunkIndex = chunk.Index,
             Text = chunk.Text,
-            Language = "en",
+            Language = DetectLanguage(chunk.Text),
             ContentHash = GenerateContentHash(chunk.Text),
             Page = chunk.Page,
             SectionTitle = string.IsNullOrEmpty(chunk.SectionTitle) ? null : chunk.SectionTitle,
             EstimatedTokens = chunk.EstimatedTokens,
             HasOverlap = chunk.HasOverlap
         };
+    }
+
+    private static string DetectLanguage(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "unknown";
+
+        var turkishSpecificChars = text.Count(c => "çğıöşüÇĞİÖŞÜ".Contains(c));
+        if (turkishSpecificChars > 0)
+            return "tr";
+
+        return "en";
     }
 }

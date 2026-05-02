@@ -2,11 +2,55 @@
     ViewData["Title"] = "Admin Panel";
     var documents = ViewBag.Documents as List<SK_UserGuide.Services.Ingestion.DocumentInfo>
     ?? new List<SK_UserGuide.Services.Ingestion.DocumentInfo>();
+    var tenants = ViewBag.Tenants as List<string> ?? new List<string>();
+    var selectedTenantId = ViewBag.TenantId as string ?? string.Empty;
+    var hasTenant = !string.IsNullOrWhiteSpace(selectedTenantId);
 }
 
 <div class="container py-5">
     <div class="row justify-content-center">
         <div class="col-lg-10">
+
+            <!-- Tenant Card -->
+            <div class="card shadow mb-4">
+                <div class="card-header bg-dark text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-diagram-3 me-2"></i>Tenant / Collection
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-6">
+                            <label for="tenantSelect" class="form-label">Active tenant collection</label>
+                            <select id="tenantSelect" class="form-select" onchange="changeTenant()" @(tenants.Count == 0 ? "disabled" : "")>
+                                @if (tenants.Count == 0)
+                                {
+                                        <option value="">No tenant collections yet</option>
+                                }
+                                else
+                                {
+                                    @foreach (var tenant in tenants)
+                                    {
+                                                <option value="@tenant" selected="@(tenant == selectedTenantId)">@tenant</option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="newTenantInput" class="form-label">Create tenant</label>
+                            <input type="text" id="newTenantInput" class="form-control" placeholder="company-a" autocomplete="off">
+                        </div>
+                        <div class="col-md-2 d-grid">
+                            <button type="button" class="btn btn-primary" onclick="createTenant()" id="createTenantBtn">
+                                Create
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-text mt-2">
+                        Uploads and deletes apply only to the selected tenant collection.
+                    </div>
+                </div>
+            </div>
 
             <!-- Upload Card -->
             <div class="card shadow mb-4">
@@ -23,6 +67,7 @@
 
                     <form asp-action="Upload" method="post" enctype="multipart/form-data" class="drop-zone"
                         id="uploadForm">
+                        <input type="hidden" id="uploadTenantId" name="tenantId" value="@selectedTenantId">
                         <div class="text-center mb-4">
                             <i class="bi bi-cloud-upload display-4 text-primary mb-3"></i>
                             <h5>Drag and Drop Files Here</h5>
@@ -42,9 +87,13 @@
                         </div>
 
                         <div class="text-center">
-                            <button type="submit" class="btn btn-success btn-lg" id="uploadBtn">
+                            <button type="submit" class="btn btn-success btn-lg" id="uploadBtn" @(hasTenant ? "" : "disabled")>
                                 <i class="bi bi-upload me-2"></i>Yukle ve Isle
                             </button>
+                            @if (!hasTenant)
+                            {
+                                    <div class="text-muted small mt-2">Create or select a tenant before uploading.</div>
+                            }
                         </div>
                     </form>
 
@@ -79,13 +128,24 @@
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                     <h4 class="mb-0">
                         <i class="bi bi-folder2-open me-2"></i>Uploaded Documents
+                        @if (hasTenant)
+                        {
+                                <small class="fw-normal">(@selectedTenantId)</small>
+                        }
                     </h4>
                     <button class="btn btn-light btn-sm" onclick="refreshDocuments()">
                         <i class="bi bi-arrow-clockwise"></i> Refresh
                     </button>
                 </div>
                 <div class="card-body">
-                    @if (documents.Count == 0)
+                    @if (!hasTenant)
+                    {
+                            <div class="text-center text-muted py-4">
+                                <i class="bi bi-inboxes display-4"></i>
+                                <p class="mt-3">Create or select a tenant collection to view documents.</p>
+                            </div>
+                    }
+                    else if (documents.Count == 0)
                     {
                             <div class="text-center text-muted py-4">
                                 <i class="bi bi-inbox display-4"></i>
@@ -118,7 +178,9 @@
                                                     </td>
                                                     <td class="text-center">
                                                         <button class="btn btn-danger btn-sm"
-                                                            onclick="deleteDocument('@doc.DocId', '@doc.DocName')">
+                                                            data-doc-id="@doc.DocId"
+                                                            data-doc-name="@doc.DocName"
+                                                            onclick="deleteDocumentFromButton(this)">
                                                             <i class="bi bi-trash"></i> Delete
                                                         </button>
                                                     </td>
@@ -167,6 +229,9 @@
             const fileName = document.getElementById('fileName');
             const uploadBtn = document.getElementById('uploadBtn');
             const dropZone = document.querySelector('.drop-zone');
+            const tenantSelect = document.getElementById('tenantSelect');
+            const uploadTenantId = document.getElementById('uploadTenantId');
+            const selectedTenantId = '@selectedTenantId';
 
             let pendingDeleteDocId = null;
 
@@ -210,7 +275,7 @@
             function showSelectedFile(file) {
                 fileName.textContent = file.name;
                 selectedFile.style.display = 'block';
-                uploadBtn.disabled = false;
+                uploadBtn.disabled = !selectedTenantId;
             }
 
             function clearFile() {
@@ -220,6 +285,14 @@
             }
 
             document.getElementById('uploadForm').addEventListener('submit', function (e) {
+                if (!selectedTenantId) {
+                    e.preventDefault();
+                    alert('Please create or select a tenant collection first.');
+                    return false;
+                }
+
+                uploadTenantId.value = selectedTenantId;
+
                 // Dosya kontrolü
                 if (!fileInput.files || fileInput.files.length === 0) {
                     e.preventDefault();
@@ -231,6 +304,50 @@
                 uploadBtn.disabled = true;
             });
 
+            function changeTenant() {
+                const tenantId = tenantSelect.value;
+                if (!tenantId) return;
+                window.location.href = '@Url.Action("Index", "Admin")' + '?tenantId=' + encodeURIComponent(tenantId);
+            }
+
+            async function createTenant() {
+                const input = document.getElementById('newTenantInput');
+                const btn = document.getElementById('createTenantBtn');
+                const tenantId = input.value.trim();
+
+                if (!tenantId) {
+                    input.focus();
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.textContent = 'Creating...';
+
+                try {
+                    const response = await fetch('@Url.Action("CreateTenant", "Admin")', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `tenantId=${encodeURIComponent(tenantId)}`
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        window.location.href = '@Url.Action("Index", "Admin")' + '?tenantId=' + encodeURIComponent(result.tenantId);
+                    } else {
+                        showToast(result.message || 'Tenant could not be created.', 'danger');
+                    }
+                } catch {
+                    showToast('Tenant could not be created.', 'danger');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Create';
+                }
+            }
+
+            function deleteDocumentFromButton(button) {
+                deleteDocument(button.dataset.docId, button.dataset.docName);
+            }
+
             function deleteDocument(docId, docName) {
                 pendingDeleteDocId = docId;
                 document.getElementById('deleteDocName').textContent = docName;
@@ -239,6 +356,10 @@
 
             async function confirmDelete() {
                 if (!pendingDeleteDocId) return;
+                if (!selectedTenantId) {
+                    showToast('TenantId is required.', 'danger');
+                    return;
+                }
 
                 const btn = document.getElementById('confirmDeleteBtn');
                 btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Deleting...';
@@ -248,7 +369,7 @@
                     const response = await fetch('@Url.Action("DeleteDocument", "Admin")', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: `docId=${encodeURIComponent(pendingDeleteDocId)}`
+                        body: `docId=${encodeURIComponent(pendingDeleteDocId)}&tenantId=${encodeURIComponent(selectedTenantId)}`
                     });
 
                     const result = await response.json();
@@ -280,7 +401,7 @@
                 const toast = document.createElement('div');
                 toast.className = `alert alert-${type} position-fixed bottom-0 end-0 m-3`;
                 toast.style.zIndex = '9999';
-                toast.innerHTML = message;
+                toast.textContent = message;
                 document.body.appendChild(toast);
                 setTimeout(() => toast.remove(), 3000);
             }
