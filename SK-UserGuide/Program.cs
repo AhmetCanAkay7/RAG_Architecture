@@ -38,12 +38,9 @@ builder.Services.AddControllersWithViews()
     {
         options.JsonSerializerOptions.Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
     });
-
-// Swagger/OpenAPI support
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Encoding provider for Turkish characters
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 // ──────────────────────────────────────────────
@@ -64,9 +61,6 @@ var azureSettings = builder.Configuration.GetSection("AzureOpenAI").Get<AzureOpe
 // ──────────────────────────────────────────────
 builder.Services.AddHttpClient<QdrantRestClient>();
 
-// ──────────────────────────────────────────────
-// 3. Semantic Kernel - Model-Agnostic Provider Setup
-// ──────────────────────────────────────────────
 var kernelBuilder = Kernel.CreateBuilder();
 
 switch (llmSettings.Provider)
@@ -75,7 +69,7 @@ switch (llmSettings.Provider)
         ValidateOpenAiSettings(openAiSettings);
 
         kernelBuilder.AddOpenAIChatCompletion(
-            modelId: llmSettings.ChatModel,
+            modelId: openAiSettings.ChatModel,
             apiKey: openAiSettings.ApiKey);
         break;
 
@@ -112,7 +106,7 @@ switch (llmSettings.Provider)
             var tempBuilder = Microsoft.SemanticKernel.Kernel.CreateBuilder();
 
             tempBuilder.AddOpenAIEmbeddingGenerator(
-                modelId: llmSettings.EmbeddingModel,
+                modelId: openAiSettings.EmbeddingModel,
                 apiKey: openAiSettings.ApiKey);
 
             return tempBuilder.Build().GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
